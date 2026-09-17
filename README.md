@@ -45,6 +45,8 @@ npm install
 npm run dev          # http://localhost:3000
 ```
 
+**线上站点**：<https://orang1ver.github.io/yuanqi-ledger/>
+
 ## 构建与部署
 
 部署在子路径下时必须注入 `BASE_PATH`，否则所有资源路径都会错：

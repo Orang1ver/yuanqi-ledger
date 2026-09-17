@@ -17,6 +17,19 @@
 
 ## 1. 工作流程
 
+### 分支纪律（1.0.0 起强制）
+
+> **正式版 1.0.0 之后，任何改动都必须先开分支开发，经用户确认无误后才 merge 回 `main`。**
+
+- 分支命名：`feat/<简短名字>` / `fix/<简短名字>` / `docs/<简短名字>`
+- 一律从**最新 `main`** 切出；**一次分支只做一件事**，不把不相关的改动混进去
+- 推分支 → 把结论告诉用户 → **用户确认** → 才 merge 回 `main` → 再推 `main`
+- merge 用 `--no-ff`；**不改写 `main` 历史**（不 rebase、不 force push）
+- **0.x 阶段仍直接推 `main`**（这条规矩明确从 1.0.0 起算）。
+  也就是说现在是「做完了直接提交推 main」，等发 1.0.0 那天开始切换。
+
+### 日常开发
+
 用户**平时就在用这个程序**，所以不要直接改他正在用的目录。
 
 ```bash
@@ -62,6 +75,37 @@ GIT_TERMINAL_PROMPT=0 git -C "$REPO" push origin main
 ```bash
 cd "$REPO" && node scripts/deploy.mjs
 ```
+
+### ⚠️ TLS：schannel 吊销检查会让 git 全挂（2026-09-18 实测）
+
+推 `gh-pages` 时 git 报：
+
+```
+schannel: next InitializeSecurityContext failed:
+CRYPT_E_NO_REVOCATION_CHECK (0x80092012) - 吊销功能无法检查证书是否吊销。
+```
+
+**成因**：用户开着 Steam++（Watt Toolkit），它把 `github.com` 指向 `127.0.0.1` 做本地反代
+（响应头里有 `Server: WattToolkit`，TLS 证书是它自签的）。它此时关掉了自己的系统代理/系统证书
+安装，于是 Windows schannel 去检查吊销状态 → 连不上 CA 的 OCSP/CRL 服务器 → 失败。
+
+**判据（很重要，别误判成网络坏了）**：
+- `curl` 到 `https://github.com` 返回 **HTTP 200** ⇒ **链路是通的**，只是 git 的 TLS 栈不认
+- `git ls-remote` 到**别的站点**（如 gitee）正常 ⇒ 不是 git 坏了，是 github.com 这条链特有问题
+
+**处置**（推代码时用，不改全局配置）：
+
+```bash
+git -c credential.helper= -c http.sslVerify=false push \
+  "https://${USER}:${TOKEN}@github.com/Orang1ver/yuanqi-ledger.git" <ref>
+```
+
+- `credential.helper=` 是为了绕开"git 拉不起凭据助手"的老问题（见下）
+- `http.sslVerify=false` **只在这一次调用里生效**，不写进任何配置文件。
+  这是本机反代场景下的既有取舍：**流量并没有真的脱离 TLS，只是不校验证书链**。
+  替代方案（更安全但要装东西）：把 Watt Toolkit 的根证书导进 Windows「受信任的根证书颁发机构」，
+  或改用它提供的系统代理模式。**如果能不用 `sslVerify=false` 就别用。**
+- **绝对不要** `git config --global http.sslVerify false` —— 那会让全机器的 git 都不校验。
 
 ---
 
@@ -205,6 +249,7 @@ curl -s "https://orang1ver.github.io/yuanqi-ledger/sw.js?cb=$(date +%s)" | grep 
 - 有副作用或取舍要主动说明（例如"改商家名会把同名的两家合并，但有快照可撤销"）
 - 顺手 commit + push 到 `origin`；网络不通就**说明情况等恢复**，不要静默跳过
 - 拿到不确定的信息（用户偏好、外部约束）**先问再动手**，不要猜
+- **1.0.0 之后：改动一律先开分支，等用户确认再 merge 回 `main`**（见第 1 节）
 
 ---
 
@@ -233,4 +278,6 @@ curl -s "https://orang1ver.github.io/yuanqi-ledger/sw.js?cb=$(date +%s)" | grep 
 | 设计系统（颜色/按钮/卡片） | `app/globals.css`（`--yq-*` 令牌）+ `README.md` |
 | 图标 / 启动图重新生成 | `scripts/make-icons.py` |
 | 子路径自检 | `scripts/verify-subpath.py` |
+| 线上站点 | <https://orang1ver.github.io/yuanqi-ledger/>（`gh-pages` 分支，`node scripts/deploy.mjs` 发布） |
+| **分支纪律（1.0.0 起）** | 本文件第 1 节「分支纪律」 |
 | 一键发布 | `scripts/deploy.mjs` |
