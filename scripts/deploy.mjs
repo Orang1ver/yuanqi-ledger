@@ -26,7 +26,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const OUT = join(ROOT, "out");
 const DRY = process.argv.includes("--dry");
 const BASE_PATH = process.env.BASE_PATH || "/yuanqi-ledger";
-const REMOTE = process.env.DEPLOY_REMOTE || "mine";
+const REMOTE = process.env.DEPLOY_REMOTE || "origin";
 const BRANCH = "gh-pages";
 
 const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));

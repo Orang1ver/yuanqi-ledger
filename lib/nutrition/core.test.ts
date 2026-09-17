@@ -1,0 +1,453 @@
+/**
+ * 营养核心的单元测试。
+ *
+ * 用 Node 自带的 `node:test` + `node:assert`，**不引入任何测试框架** ——
+ * 这台机器装不上 npm 包，而这几百行纯函数恰恰是最该被测试覆盖的部分。
+ * 运行方式见 `npm run test:nutrition`（内部是 tsc 编成 CJS 再交给 node --test）。
+ *
+ * 重点覆盖三件事：
+ *   1. **「没数据」不等于 0** —— 这是全层最容易出错、后果最严重的约定
+ *   2. **快照语义** —— 改食物库不许改写历史记录
+ *   3. **端到端可追溯** —— 「一包薯片、一杯奶茶」的每个数字都能追回食物与克数
+ */
+
+import { strict as assert } from "node:assert";
+import { describe, it } from "node:test";
+
+import {
+  addNutrition,
+  categoryEnergyShare,
+  compareToTargets,
+  energyRatios,
+  fallbackGrams,
+  groupByMealSlot,
+  makeDietEntry,
+  nutritionOf,
+  proteinPerKg,
+  resolvePortion,
+  roundValues,
+  scaleNutrition,
+  sumNutrition,
+  topContributors,
+  totalsByDate,
+} from "./core";
+import { allFoods, findFoodByName, foodById, portionTable, searchFoods } from "./library";
+import { parseFragment, splitFragments, stripLeadNoise } from "./parse";
+import { calcNutritionTargets, targetsConflict } from "./targets";
+import type { DietEntry, FoodItem } from "./types";
+import type { HealthProfile } from "../types";
+
+// ---------- 测试用夹具 ----------
+
+const PROFILE: HealthProfile = {
+  sex: "女",
+  age: 26,
+  heightCm: 165,
+  weightKg: 56.5,
+  activityLevel: "轻度活动",
+  goal: "维持健康",
+  allergies: "",
+  conditions: "",
+  updatedAt: 0,
+};
+
+/** 造一条记录。id / createdAt 显式传，保证测试可重复 */
+function entry(food: FoodItem, grams: number, over: Partial<DietEntry> = {}): DietEntry {
+  return {
+    ...makeDietEntry({
+      id: `t-${food.id}-${grams}`,
+      createdAt: 1_789_000_000_000,
+      date: "2026-09-17",
+      time: "20:30",
+      mealSlot: "加餐",
+      food,
+      name: food.name,
+      amount: 1,
+      unitLabel: "克",
+      grams,
+      source: "db",
+    }),
+    ...over,
+  };
+}
+
+describe("基础换算", () => {
+  it("nutritionOf 按克数线性折算", () => {
+    const food = foodById("shupian")!;
+    const n = nutritionOf(food, 70);
+    assert.equal(Math.round(n.kcal * 10) / 10, 383.6); // 548 × 0.7
+    assert.equal(Math.round(n.fat * 10) / 10, 23.8);
+    assert.equal(Math.round(n.sodium!), 350); // 500mg × 0.7
+  });
+
+  it("库里没有的营养素保持 undefined，不会被折算成 0", () => {
+    const noSodium: FoodItem = {
+      id: "x",
+      name: "无钠数据食物",
+      category: "snack",
+      unit: "g",
+      kcal: 100,
+      protein: 1,
+      fat: 1,
+      carb: 1,
+      source: "测试",
+    };
+    assert.equal(nutritionOf(noSodium, 200).sodium, undefined);
+    assert.equal(nutritionOf(noSodium, 200).fiber, undefined);
+  });
+
+  it("scaleNutrition 让未知保持未知", () => {
+    const scaled = scaleNutrition({ kcal: 100, protein: 1, fat: 2, carb: 3 }, 3);
+    assert.equal(scaled.kcal, 300);
+    assert.equal(scaled.sodium, undefined);
+  });
+
+  it("addNutrition 两边都缺才算缺", () => {
+    const a = { kcal: 10, protein: 1, fat: 1, carb: 1, sodium: 100 };
+    const b = { kcal: 10, protein: 1, fat: 1, carb: 1 };
+    assert.equal(addNutrition(a, b).sodium, 100);
+    assert.equal(addNutrition(b, b).sodium, undefined);
+  });
+
+  it("roundValues 收掉浮点尾巴，热量取整", () => {
+    const v = roundValues({ kcal: 383.6000000000001, protein: 4.899999, fat: 23.8, carb: 37.03 });
+    assert.equal(v.kcal, 384);
+    assert.equal(v.protein, 4.9);
+  });
+});
+
+describe("汇总与数据覆盖度", () => {
+  const withSodium = entry(foodById("shupian")!, 70);
+  const withoutSodium: DietEntry = {
+    ...entry(foodById("shupian")!, 70, { id: "no-sodium" }),
+    nutrition: { kcal: 383.6, protein: 4.9, fat: 23.8, carb: 37.03 }, // 自定义食物，没有钠数据
+  };
+
+  it("部分条目缺钠时，总和只算已知的，并把覆盖率报出来", () => {
+    const t = sumNutrition([withSodium, withoutSodium]);
+    assert.equal(t.entries, 2);
+    assert.equal(Math.round(t.values.sodium!), 350); // 只算那一条有数据的
+    assert.equal(t.sodiumCoverage, 0.5); // 但明说只有一半
+  });
+
+  it("全部缺钠时，总和是 undefined —— 空集合的总和是「未知」不是「零」", () => {
+    const t = sumNutrition([withoutSodium, withoutSodium]);
+    assert.equal(t.values.sodium, undefined);
+    assert.equal(t.sodiumCoverage, 0);
+    assert.equal(Math.round(t.values.kcal), 767);
+  });
+
+  it("空集合不会崩，也没把自己说成达标", () => {
+    const t = sumNutrition([]);
+    assert.equal(t.entries, 0);
+    assert.equal(t.values.kcal, 0);
+    assert.equal(t.values.sodium, undefined);
+    assert.equal(t.sodiumCoverage, 0);
+  });
+
+  it("totalsByDate 按日期升序", () => {
+    const list = [
+      entry(foodById("shupian")!, 70, { id: "c", date: "2026-09-17" }),
+      entry(foodById("shupian")!, 70, { id: "a", date: "2026-09-15" }),
+      entry(foodById("shupian")!, 70, { id: "b", date: "2026-09-16" }),
+    ];
+    assert.deepEqual(
+      totalsByDate(list).map((x) => x.date),
+      ["2026-09-15", "2026-09-16", "2026-09-17"],
+    );
+  });
+
+  it("groupByMealSlot 顺序固定为早/午/晚/加餐，不跟着数据先后走", () => {
+    const list = [
+      entry(foodById("shupian")!, 70, { id: "d", mealSlot: "晚餐" }),
+      entry(foodById("shupian")!, 70, { id: "b", mealSlot: "早餐" }),
+    ];
+    assert.deepEqual(
+      groupByMealSlot(list).map((g) => g.slot),
+      ["早餐", "午餐", "晚餐", "加餐"],
+    );
+    assert.equal(groupByMealSlot(list)[1].entries.length, 0); // 午餐今天没记
+  });
+});
+
+describe("结构分析", () => {
+  it("供能比三项相加约等于 100", () => {
+    const r = energyRatios({ kcal: 500, protein: 25, fat: 20, carb: 60 });
+    assert.equal(Math.round((r.protein + r.fat + r.carb) * 10) / 10, 100);
+  });
+
+  it("总热量为 0 时供能比返回全 0，不出 NaN", () => {
+    const r = energyRatios({ kcal: 0, protein: 0, fat: 0, carb: 0 });
+    assert.deepEqual(r, { protein: 0, fat: 0, carb: 0 });
+  });
+
+  it("每公斤体重蛋白，体重非法时返回 0 而不是 Infinity", () => {
+    const v = { kcal: 100, protein: 60, fat: 1, carb: 1 };
+    assert.equal(proteinPerKg(v, 60), 1);
+    assert.equal(proteinPerKg(v, 0), 0);
+  });
+
+  it("分类供能占比按热量降序，合计为 1", () => {
+    const list = [entry(foodById("shupian")!, 70), entry(foodById("rice-cooked")!, 180)];
+    const shares = categoryEnergyShare(list);
+    assert.equal(Math.round(shares.reduce((s, x) => s + x.share, 0) * 100) / 100, 1);
+    assert.equal(shares[0].category, "snack"); // 70g 薯片（384kcal）压过 180g 米饭（209kcal）
+    assert.equal(shares[1].category, "staple");
+  });
+
+  it("贡献榜能把「是哪一样拉高的」指出来", () => {
+    const list = [
+      entry(foodById("shupian")!, 70, { id: "1" }),
+      entry(foodById("naicha-quantang")!, 500, { id: "2" }),
+      entry(foodById("xigua")!, 200, { id: "3" }),
+    ];
+    const top = topContributors(list, "kcal", 2);
+    assert.equal(top.length, 2);
+    assert.equal(top[0].entry.foodId, "naicha-quantang"); // 430 > 383.6 > 62
+    assert.ok(top[0].value > top[1].value);
+  });
+});
+
+describe("与目标对比", () => {
+  const targets = calcNutritionTargets(PROFILE);
+
+  it("没有钠数据时不硬判，返回 unknown 并说明原因", () => {
+    const t = sumNutrition([
+      { ...entry(foodById("shupian")!, 70), nutrition: { kcal: 383.6, protein: 4.9, fat: 23.8, carb: 37 } },
+    ]);
+    const sodium = compareToTargets(t, targets).find((x) => x.key === "sodium")!;
+    assert.equal(sodium.verdict, "unknown");
+    assert.match(sodium.note!, /0%/);
+  });
+
+  it("钠是「别超」型：超过上限判 high", () => {
+    const t = sumNutrition([entry(foodById("xiangchang")!, 500)]); // 香肠钠 2309mg/100g
+    const sodium = compareToTargets(t, targets).find((x) => x.key === "sodium")!;
+    assert.equal(sodium.direction, "atMost");
+    assert.equal(sodium.verdict, "high");
+  });
+
+  it("纤维是「要够」型：差得远判 low，接近就不算问题", () => {
+    const low = compareToTargets(sumNutrition([]), targets).find((x) => x.key === "fiber")!;
+    assert.equal(low.direction, "atLeast");
+    // 空集合下纤维也是 undefined，所以先看方向语义，再单独验一个够量的场景
+    const plenty = compareToTargets(
+      sumNutrition([
+        { ...entry(foodById("shupian")!, 70), nutrition: { kcal: 300, protein: 5, fat: 20, carb: 30, fiber: 30 } },
+      ]),
+      targets,
+    ).find((x) => x.key === "fiber")!;
+    assert.equal(plenty.verdict, "ok");
+  });
+
+  it("热量是「落在区间」型：吃太少判 low，不是越多越好", () => {
+    const kcal = compareToTargets(sumNutrition([]), targets).find((x) => x.key === "kcal")!;
+    assert.equal(kcal.direction, "band");
+    assert.equal(kcal.verdict, "low");
+  });
+});
+
+describe("份量解析", () => {
+  const table = portionTable();
+
+  it("一包薯片 = 70g", () => {
+    const r = resolvePortion(table, foodById("shupian")!, "包")!;
+    assert.equal(r.grams, 70);
+    assert.equal(r.portion.label, "一包");
+  });
+
+  it("同一量词可以指定档位：大包 = 135g", () => {
+    assert.equal(resolvePortion(table, foodById("shupian")!, "包", "大包")!.grams, 135);
+    assert.equal(resolvePortion(table, foodById("shupian")!, "包", "小包")!.grams, 40);
+  });
+
+  it("一杯奶茶 = 500ml，大杯 = 700ml", () => {
+    const milktea = foodById("naicha-quantang")!;
+    assert.equal(resolvePortion(table, milktea, "杯")!.grams, 500);
+    assert.equal(resolvePortion(table, milktea, "杯", "大杯")!.grams, 700);
+  });
+
+  it("一碗米饭 = 180g（熟重）", () => {
+    const r = resolvePortion(table, foodById("rice-cooked")!, "碗")!;
+    assert.equal(r.grams, 180);
+    assert.match(r.portion.note ?? "", /熟重/);
+  });
+
+  it("量词对不上就返回 null，绝不猜一个数字出来", () => {
+    assert.equal(resolvePortion(table, foodById("rice-cooked")!, "勺"), null);
+    assert.equal(resolvePortion(table, foodById("shupian")!, "桶"), null);
+  });
+
+  it("兜底克数按分类给，且十类都有值", () => {
+    assert.equal(fallbackGrams({ category: "snack" }), 50);
+    assert.equal(fallbackGrams({ category: "drink" }), 330);
+  });
+});
+
+describe("浅解析", () => {
+  it("剥掉时间词与动词，让量词能被认出来", () => {
+    // 这一条是真踩过的坑：「晚上吃了一包薯片」若不剥噪音，
+    // 整段会匹配失败并退化成拍脑袋的兜底克数，而用户明明说清了份量
+    const p = parseFragment("晚上吃了一包薯片");
+    assert.equal(p.cleaned, "一包薯片");
+    assert.equal(p.amount, 1);
+    assert.equal(p.unit, "包");
+    assert.equal(p.name, "薯片");
+  });
+
+  it("中文数字与「两」都认", () => {
+    const p = parseFragment("两个鸡蛋");
+    assert.equal(p.amount, 2);
+    assert.equal(p.unit, "个");
+    assert.equal(p.name, "鸡蛋");
+  });
+
+  it("「半」算 0.5", () => {
+    assert.equal(parseFragment("半碗米饭").amount, 0.5);
+    assert.equal(parseFragment("半碗米饭").name, "米饭");
+  });
+
+  it("明确写了克数时以克数为准，且在前后都能认", () => {
+    assert.deepEqual(
+      [parseFragment("70克薯片").amount, parseFragment("70克薯片").name],
+      [70, "薯片"],
+    );
+    assert.deepEqual(
+      [parseFragment("薯片 70 克").amount, parseFragment("薯片 70 克").name],
+      [70, "薯片"],
+    );
+  });
+
+  it("⚠ 食物名里含量词不会被误切：「面包」不是「一个包」", () => {
+    const p = parseFragment("面包");
+    assert.equal(p.unit, undefined);
+    assert.equal(p.name, "面包");
+    assert.equal(parseFragment("一个面包").name, "面包");
+    assert.equal(parseFragment("一个面包").unit, "个");
+  });
+
+  it("没写份量时如实保持没有量词，交给上层去兜底并标估算", () => {
+    const p = parseFragment("奶茶");
+    assert.equal(p.unit, undefined);
+    assert.equal(p.name, "奶茶");
+    assert.equal(p.amount, 1);
+  });
+
+  it("噪音只剥开头，不动食物名", () => {
+    assert.equal(stripLeadNoise("我喝了一杯奶茶"), "一杯奶茶");
+    assert.equal(stripLeadNoise("一杯奶茶"), "一杯奶茶");
+    assert.equal(stripLeadNoise("今天下午吃了个苹果"), "苹果");
+  });
+
+  it("切段认得中英文逗号、顿号与空白", () => {
+    assert.deepEqual(splitFragments("一包薯片，一杯奶茶"), ["一包薯片", "一杯奶茶"]);
+    assert.deepEqual(splitFragments("两个鸡蛋、一碗米饭"), ["两个鸡蛋", "一碗米饭"]);
+    assert.deepEqual(splitFragments("一包薯片 一杯奶茶"), ["一包薯片", "一杯奶茶"]);
+  });
+});
+
+describe("快照语义", () => {
+  it("记录里的营养值是快照：事后改食物库不会改写历史", () => {
+    const food = foodById("shupian")!;
+    const before = entry(food, 70);
+    const snapshot = before.nutrition.kcal;
+
+    // 模拟"以后修正了食物库"
+    const original = food.kcal;
+    try {
+      food.kcal = 999;
+      assert.equal(before.nutrition.kcal, snapshot, "历史记录被改写了");
+      assert.equal(Math.round(before.nutrition.kcal), 384);
+    } finally {
+      food.kcal = original;
+    }
+  });
+
+  it("名字与分类也一并快照，库里删了条目历史仍读得懂", () => {
+    const e = entry(foodById("shupian")!, 70);
+    assert.equal(e.name, "薯片");
+    assert.equal(e.category, "snack");
+    assert.equal(e.foodId, "shupian");
+  });
+});
+
+describe("食物库检索", () => {
+  it("别名能命中正名：土豆片 → 薯片", () => {
+    assert.equal(findFoodByName("土豆片")?.id, "shupian");
+  });
+
+  it("搜索能把用户说的长句里的词捞出来", () => {
+    const hits = searchFoods("奶茶");
+    assert.ok(hits.length > 0);
+    assert.ok(hits.some((f) => f.id === "naicha-quantang"));
+  });
+
+  it("每条都必须标数据来源，不许留空", () => {
+    const noSource = allFoods().filter((f) => !f.source?.trim());
+    assert.deepEqual(noSource.map((f) => f.id), []);
+  });
+});
+
+describe("目标推导", () => {
+  it("复用了健康模块的热量目标，没有另起一套公式", () => {
+    const t = calcNutritionTargets(PROFILE);
+    // BMR 1305 × 1.375 = 1794
+    assert.equal(t.kcal, 1794);
+  });
+
+  it("三大营养素加起来约等于总热量，不自相矛盾", () => {
+    const t = calcNutritionTargets(PROFILE);
+    assert.equal(targetsConflict(t), null);
+    const used = t.protein * 4 + t.fat * 9 + t.carb * 4;
+    assert.ok(Math.abs(used - t.kcal) / t.kcal < 0.01);
+  });
+
+  it("钠与纤维分别设上限和下限，方向不会搞反", () => {
+    const t = calcNutritionTargets(PROFILE);
+    assert.equal(t.sodium, 2000);
+    assert.ok(t.fiber >= 25);
+  });
+});
+
+describe("端到端可追溯（P1 的验收标准）", () => {
+  it("「一包薯片 + 一杯奶茶」的每个数字都能追回食物与克数", () => {
+    const chips = foodById("shupian")!;
+    const milktea = foodById("naicha-quantang")!;
+    const table = portionTable();
+
+    const g1 = resolvePortion(table, chips, "包")!.grams;
+    const g2 = resolvePortion(table, milktea, "杯")!.grams;
+    assert.equal(g1, 70);
+    assert.equal(g2, 500);
+
+    const list = [entry(chips, g1), entry(milktea, g2, { id: "t-milktea" })];
+    const totals = sumNutrition(list);
+
+    // 值本身
+    assert.equal(Math.round(totals.values.kcal * 10) / 10, 813.6); // 383.6 + 430
+    assert.equal(Math.round(totals.values.sodium!), 550); // 350 + 200
+    assert.equal(totals.sodiumCoverage, 1);
+
+    // 可追溯：每个数字都指得回是哪种食物、多少克
+    assert.deepEqual(
+      list.map((e) => [e.foodId, e.grams]),
+      [["shupian", 70], ["naicha-quantang", 500]],
+    );
+
+    // 结论：对一个 1794 kcal 目标的人来说，这两样零食占掉约 45% 的热量、28% 的钠上限
+    const targets = calcNutritionTargets(PROFILE);
+    assert.equal(Math.round((totals.values.kcal / targets.kcal) * 100), 45);
+    assert.equal(Math.round((totals.values.sodium! / targets.sodium) * 100), 28);
+
+    // 脂肪占比同步能看出来：23.8 + 12 = 35.8g，已超目标的一半
+    assert.ok(totals.values.fat > targets.fat * 0.5);
+  });
+
+  it("模型给的数值不可能混进来：所有数字都来自库里那一次乘法", () => {
+    const chips = foodById("shupian")!;
+    const e = entry(chips, 70);
+    // 与「库里每 100g 的值 × 0.7」逐项相等，不存在第二个来源
+    const expected = nutritionOf(chips, 70);
+    assert.deepEqual(e.nutrition, expected);
+  });
+});

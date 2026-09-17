@@ -1,0 +1,281 @@
+{
+  "meta": {
+    "version": 1,
+    "updated": "2026-09-17",
+    "note": "量词 → 克数。这是产品资产，会持续修正：用户改一次「我的一杯奶茶其实是大杯」，就该记进他的个人默认值，而不是改这里。⚠️ 同一量词下 match 是子串匹配且先命中先取，特例务必写在通用规则前面。grams 是默认档；range 用来给区间，不假装精确。"
+  },
+  "rules": [
+    { "unit": "包", "match": ["薯片", "土豆片", "乐事", "膨化"], "portions": [
+      { "label": "小包", "grams": 40, "range": [25, 50] },
+      { "label": "一包", "grams": 70, "range": [55, 90], "isDefault": true },
+      { "label": "大包", "grams": 135, "range": [100, 180] }
+    ] },
+    { "unit": "包", "match": ["方便面", "泡面", "速食面"], "portions": [
+      { "label": "一包", "grams": 100, "range": [85, 120], "isDefault": true, "note": "含调料包" }
+    ] },
+    { "unit": "包", "match": ["坚果", "每日坚果"], "portions": [
+      { "label": "一小包", "grams": 25, "range": [20, 35], "isDefault": true }
+    ] },
+    { "unit": "包", "match": ["饼干", "曲奇", "苏打"], "portions": [
+      { "label": "一包", "grams": 100, "range": [50, 200], "isDefault": true }
+    ] },
+    { "unit": "包", "match": ["瓜子", "葵花籽", "花生"], "portions": [
+      { "label": "一包", "grams": 100, "isDefault": true }
+    ] },
+    { "unit": "包", "match": ["辣条", "牛肉干", "猪肉脯", "果脯", "蜜饯"], "portions": [
+      { "label": "一包", "grams": 60, "range": [30, 100], "isDefault": true }
+    ] },
+
+    { "unit": "袋", "match": ["牛奶", "豆浆"], "portions": [
+      { "label": "一袋", "grams": 250, "range": [200, 300], "isDefault": true }
+    ] },
+    { "unit": "袋", "match": ["薯片", "土豆片", "乐事"], "portions": [
+      { "label": "一袋", "grams": 70, "range": [40, 110], "isDefault": true }
+    ] },
+    { "unit": "袋", "match": ["吐司", "面包"], "portions": [
+      { "label": "一袋", "grams": 400, "range": [300, 500], "isDefault": true }
+    ] },
+
+    { "unit": "盒", "match": ["酸奶"], "portions": [
+      { "label": "一盒", "grams": 100, "range": [80, 200], "isDefault": true }
+    ] },
+    { "unit": "盒", "match": ["牛奶"], "portions": [
+      { "label": "一盒", "grams": 250, "range": [200, 1000], "isDefault": true }
+    ] },
+    { "unit": "盒", "match": ["冰淇淋", "雪糕"], "portions": [
+      { "label": "一盒", "grams": 100, "range": [60, 300], "isDefault": true }
+    ] },
+
+    { "unit": "杯", "match": ["奶茶"], "portions": [
+      { "label": "小杯", "grams": 400, "range": [350, 500] },
+      { "label": "中杯", "grams": 500, "range": [450, 600], "isDefault": true, "note": "默认按全糖 500ml" },
+      { "label": "大杯", "grams": 700, "range": [600, 800] }
+    ] },
+    { "unit": "杯", "match": ["拿铁", "卡布奇诺", "摩卡", "美式", "咖啡"], "portions": [
+      { "label": "一杯", "grams": 350, "range": [200, 500], "isDefault": true }
+    ] },
+    { "unit": "杯", "match": ["豆浆"], "portions": [
+      { "label": "一杯", "grams": 300, "range": [200, 400], "isDefault": true }
+    ] },
+    { "unit": "杯", "match": ["牛奶"], "portions": [
+      { "label": "一杯", "grams": 250, "range": [200, 300], "isDefault": true }
+    ] },
+    { "unit": "杯", "match": ["橙汁", "果汁"], "portions": [
+      { "label": "一杯", "grams": 300, "range": [200, 400], "isDefault": true }
+    ] },
+    { "unit": "杯", "match": ["酸奶"], "portions": [
+      { "label": "一杯", "grams": 150, "range": [100, 250], "isDefault": true }
+    ] },
+    { "unit": "杯", "match": ["可乐", "雪碧", "冰红茶", "乳酸菌", "饮料", "苏打水"], "portions": [
+      { "label": "一杯", "grams": 330, "range": [250, 500], "isDefault": true }
+    ] },
+    { "unit": "杯", "match": ["啤酒", "红酒", "白酒", "黄酒"], "portions": [
+      { "label": "一杯", "grams": 330, "range": [200, 500], "isDefault": true }
+    ] },
+
+    { "unit": "瓶", "match": ["可乐", "雪碧", "冰红茶", "乳酸菌", "饮料"], "portions": [
+      { "label": "一瓶", "grams": 500, "range": [330, 600], "isDefault": true }
+    ] },
+    { "unit": "瓶", "match": ["橙汁", "果汁"], "portions": [
+      { "label": "一瓶", "grams": 450, "range": [300, 1000], "isDefault": true }
+    ] },
+    { "unit": "瓶", "match": ["牛奶"], "portions": [
+      { "label": "一瓶", "grams": 250, "range": [200, 500], "isDefault": true }
+    ] },
+    { "unit": "瓶", "match": ["啤酒"], "portions": [
+      { "label": "一瓶", "grams": 500, "range": [330, 640], "isDefault": true }
+    ] },
+    { "unit": "瓶", "match": ["油", "酱油", "老抽", "醋"], "portions": [
+      { "label": "一瓶", "grams": 500, "range": [250, 1000], "isDefault": true }
+    ] },
+
+    { "unit": "罐", "match": ["午餐肉"], "portions": [
+      { "label": "一罐", "grams": 340, "range": [200, 400], "isDefault": true }
+    ] },
+    { "unit": "罐", "match": ["可乐", "雪碧", "饮料"], "portions": [
+      { "label": "一罐", "grams": 330, "range": [250, 400], "isDefault": true }
+    ] },
+    { "unit": "罐", "match": ["啤酒"], "portions": [
+      { "label": "一罐", "grams": 330, "range": [250, 500], "isDefault": true }
+    ] },
+
+    { "unit": "听", "match": ["可乐", "雪碧", "饮料", "啤酒"], "portions": [
+      { "label": "一听", "grams": 330, "range": [250, 500], "isDefault": true }
+    ] },
+
+    { "unit": "碗", "match": ["米饭", "糙米饭", "杂粮饭"], "portions": [
+      { "label": "小碗", "grams": 120, "range": [100, 150] },
+      { "label": "一碗", "grams": 180, "range": [150, 250], "isDefault": true, "note": "约一两半米，指熟重" },
+      { "label": "大碗", "grams": 250, "range": [220, 300] }
+    ] },
+    { "unit": "碗", "match": ["面条", "米线", "米粉", "凉皮", "粉丝"], "portions": [
+      { "label": "一碗", "grams": 250, "range": [150, 350], "isDefault": true }
+    ] },
+    { "unit": "碗", "match": ["粥", "汤"], "portions": [
+      { "label": "一碗", "grams": 300, "range": [200, 400], "isDefault": true }
+    ] },
+    { "unit": "碗", "match": ["饺子", "馄饨", "云吞"], "portions": [
+      { "label": "一碗", "grams": 250, "range": [150, 350], "isDefault": true }
+    ] },
+
+    { "unit": "盘", "match": ["时蔬", "青菜", "菜", "豆腐", "茄子", "豆角", "土豆丝"], "portions": [
+      { "label": "一盘", "grams": 250, "range": [150, 400], "isDefault": true }
+    ] },
+
+    { "unit": "份", "match": ["米饭", "面条", "米线", "凉皮"], "portions": [
+      { "label": "一份", "grams": 200, "range": [150, 300], "isDefault": true }
+    ] },
+    { "unit": "份", "match": ["饺子", "馄饨", "云吞"], "portions": [
+      { "label": "一份", "grams": 200, "range": [150, 300], "isDefault": true }
+    ] },
+    { "unit": "份", "match": ["西瓜", "苹果", "葡萄", "水果"], "portions": [
+      { "label": "一份", "grams": 200, "range": [100, 350], "isDefault": true }
+    ] },
+    { "unit": "份", "match": ["蛋糕", "冰淇淋"], "portions": [
+      { "label": "一份", "grams": 100, "range": [60, 200], "isDefault": true }
+    ] },
+    { "unit": "份", "match": ["肉", "鸡", "鱼", "虾", "牛", "羊", "猪", "排骨", "豆腐"], "portions": [
+      { "label": "一份", "grams": 150, "range": [100, 250], "isDefault": true, "note": "餐馆一盘菜的量，按可食部分算" }
+    ] },
+
+    { "unit": "个", "match": ["鸡蛋", "蛋"], "portions": [
+      { "label": "一个", "grams": 55, "range": [45, 70], "isDefault": true, "note": "可食部分，不含壳" }
+    ] },
+    { "unit": "个", "match": ["苹果"], "portions": [
+      { "label": "一个", "grams": 200, "range": [150, 300], "isDefault": true }
+    ] },
+    { "unit": "个", "match": ["橘子", "橙子"], "portions": [
+      { "label": "一个", "grams": 150, "range": [100, 250], "isDefault": true }
+    ] },
+    { "unit": "个", "match": ["梨", "桃", "芒果"], "portions": [
+      { "label": "一个", "grams": 200, "range": [150, 300], "isDefault": true }
+    ] },
+    { "unit": "个", "match": ["猕猴桃"], "portions": [
+      { "label": "一个", "grams": 80, "range": [60, 120], "isDefault": true }
+    ] },
+    { "unit": "个", "match": ["火龙果"], "portions": [
+      { "label": "一个", "grams": 400, "range": [300, 600], "isDefault": true }
+    ] },
+    { "unit": "个", "match": ["牛油果"], "portions": [
+      { "label": "一个", "grams": 150, "range": [120, 200], "isDefault": true }
+    ] },
+    { "unit": "个", "match": ["包子", "馒头", "花卷"], "portions": [
+      { "label": "一个", "grams": 100, "range": [70, 150], "isDefault": true }
+    ] },
+    { "unit": "个", "match": ["饺子"], "portions": [
+      { "label": "一个", "grams": 20, "range": [15, 30], "isDefault": true }
+    ] },
+    { "unit": "个", "match": ["粽子"], "portions": [
+      { "label": "一个", "grams": 150, "range": [100, 250], "isDefault": true }
+    ] },
+    { "unit": "个", "match": ["蛋挞"], "portions": [
+      { "label": "一个", "grams": 60, "range": [50, 80], "isDefault": true }
+    ] },
+    { "unit": "个", "match": ["蛋黄派", "面包", "蛋糕"], "portions": [
+      { "label": "一个", "grams": 60, "range": [30, 120], "isDefault": true }
+    ] },
+    { "unit": "个", "match": ["果冻"], "portions": [
+      { "label": "一个", "grams": 100, "range": [60, 200], "isDefault": true }
+    ] },
+    { "unit": "个", "match": ["玉米"], "portions": [
+      { "label": "一个", "grams": 200, "range": [150, 300], "isDefault": true }
+    ] },
+
+    { "unit": "根", "match": ["香蕉"], "portions": [
+      { "label": "一根", "grams": 120, "range": [90, 180], "isDefault": true }
+    ] },
+    { "unit": "根", "match": ["玉米"], "portions": [
+      { "label": "一根", "grams": 200, "range": [150, 300], "isDefault": true }
+    ] },
+    { "unit": "根", "match": ["油条"], "portions": [
+      { "label": "一根", "grams": 70, "range": [50, 100], "isDefault": true }
+    ] },
+    { "unit": "根", "match": ["香肠", "火腿肠"], "portions": [
+      { "label": "一根", "grams": 45, "range": [30, 80], "isDefault": true }
+    ] },
+    { "unit": "根", "match": ["黄瓜"], "portions": [
+      { "label": "一根", "grams": 200, "range": [150, 300], "isDefault": true }
+    ] },
+
+    { "unit": "只", "match": ["小龙虾"], "portions": [
+      { "label": "一只", "grams": 25, "range": [15, 40], "isDefault": true, "note": "按可食部分估" }
+    ] },
+    { "unit": "只", "match": ["虾"], "portions": [
+      { "label": "一只", "grams": 15, "range": [10, 25], "isDefault": true }
+    ] },
+    { "unit": "只", "match": ["鸡腿", "鸡翅"], "portions": [
+      { "label": "一只", "grams": 120, "range": [80, 180], "isDefault": true }
+    ] },
+    { "unit": "只", "match": ["鸡蛋", "蛋"], "portions": [
+      { "label": "一只", "grams": 55, "range": [45, 70], "isDefault": true }
+    ] },
+
+    { "unit": "片", "match": ["吐司", "面包"], "portions": [
+      { "label": "一片", "grams": 35, "range": [25, 50], "isDefault": true }
+    ] },
+    { "unit": "片", "match": ["培根"], "portions": [
+      { "label": "一片", "grams": 15, "range": [10, 25], "isDefault": true }
+    ] },
+    { "unit": "片", "match": ["奶酪", "芝士"], "portions": [
+      { "label": "一片", "grams": 20, "range": [15, 30], "isDefault": true }
+    ] },
+    { "unit": "片", "match": ["西瓜"], "portions": [
+      { "label": "一片", "grams": 200, "range": [100, 350], "isDefault": true }
+    ] },
+
+    { "unit": "块", "match": ["巧克力"], "portions": [
+      { "label": "一块", "grams": 10, "range": [5, 20], "isDefault": true }
+    ] },
+    { "unit": "块", "match": ["蛋糕"], "portions": [
+      { "label": "一块", "grams": 100, "range": [70, 150], "isDefault": true }
+    ] },
+    { "unit": "块", "match": ["排骨"], "portions": [
+      { "label": "一块", "grams": 50, "range": [30, 80], "isDefault": true }
+    ] },
+    { "unit": "块", "match": ["豆腐"], "portions": [
+      { "label": "一块", "grams": 200, "range": [150, 400], "isDefault": true }
+    ] },
+    { "unit": "块", "match": ["榴莲"], "portions": [
+      { "label": "一块", "grams": 100, "range": [60, 200], "isDefault": true }
+    ] },
+
+    { "unit": "勺", "match": ["油"], "portions": [
+      { "label": "一勺", "grams": 10, "range": [5, 15], "isDefault": true, "note": "一瓷勺约 10ml" }
+    ] },
+    { "unit": "勺", "match": ["糖"], "portions": [
+      { "label": "一勺", "grams": 8, "range": [5, 12], "isDefault": true }
+    ] },
+    { "unit": "勺", "match": ["酱油", "老抽", "醋", "蚝油"], "portions": [
+      { "label": "一勺", "grams": 10, "range": [5, 15], "isDefault": true }
+    ] },
+    { "unit": "勺", "match": ["蜂蜜", "芝麻酱", "沙拉酱", "番茄酱", "豆瓣酱", "甜面酱"], "portions": [
+      { "label": "一勺", "grams": 15, "range": [10, 20], "isDefault": true }
+    ] },
+    { "unit": "勺", "match": ["盐"], "portions": [
+      { "label": "一勺", "grams": 5, "range": [3, 8], "isDefault": true, "note": "一平勺约 5g，约等于 2000mg 钠" }
+    ] },
+
+    { "unit": "串", "match": ["羊肉串", "烤"], "portions": [
+      { "label": "一串", "grams": 30, "range": [20, 50], "isDefault": true }
+    ] },
+
+    { "unit": "把", "match": ["瓜子", "坚果", "花生"], "portions": [
+      { "label": "一把", "grams": 30, "range": [20, 50], "isDefault": true }
+    ] },
+
+    { "unit": "条", "match": ["鱼"], "portions": [
+      { "label": "一条", "grams": 300, "range": [200, 600], "isDefault": true, "note": "按可食部分估" }
+    ] },
+    { "unit": "条", "match": ["培根"], "portions": [
+      { "label": "一条", "grams": 15, "range": [10, 25], "isDefault": true }
+    ] },
+
+    { "unit": "扎", "match": ["啤酒"], "portions": [
+      { "label": "一扎", "grams": 1000, "range": [500, 1500], "isDefault": true }
+    ] },
+
+    { "unit": "桶", "match": ["方便面", "泡面"], "portions": [
+      { "label": "一桶", "grams": 110, "range": [90, 130], "isDefault": true, "note": "桶装含调料包" }
+    ] }
+  ]
+}

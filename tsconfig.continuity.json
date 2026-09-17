@@ -20,6 +20,6 @@
     "isolatedModules": false,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["lib/**/*.ts", "data/**/*.json", "scripts/**/*.json", "scripts/check-data-continuity.ts"],
+  "include": ["lib/**/*.ts", "data/**/*.json", "scripts/**/*.json", "scripts/**/*.ts"],
   "exclude": ["node_modules", ".next", "out", ".tmp-check"]
 }

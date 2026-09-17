@@ -8,7 +8,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "check:data": "node scripts/run-continuity.mjs",
+    "check:data": "node scripts/run-ts.mjs scripts/check-data-continuity.ts",
+    "check:nutrition": "node scripts/check-nutrition.mjs",
+    "test:nutrition": "node scripts/run-ts.mjs lib/nutrition/core.test.ts --test",
+    "probe": "node scripts/run-ts.mjs scripts/nutrition-probe.ts --",
     "preview": "node scripts/preview.mjs",
     "smoke": "node scripts/browser-smoke.mjs",
     "demo:data": "node scripts/make-demo-backup.mjs"

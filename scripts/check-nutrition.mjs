@@ -1,0 +1,294 @@
+#!/usr/bin/env node
+/**
+ * 食物库与份量表的数据质检闸门。
+ *
+ * 为什么需要它：这个库是**手录**的，几百个数字里必然会有打错的。
+ * 靠人眼复核几百行数字是不现实的，但**成分表自己会露馅** ——
+ * 蛋白质和碳水约 4 kcal/g、脂肪约 9 kcal/g，所以
+ * `蛋白×4 + 脂肪×9 + 碳水×4` 应当约等于标注热量。
+ * 把这条关系当断言，手滑打错一位就当场拦下。
+ *
+ * 它抓得到什么：算术错误、字段名写错、别名撞车、份量表引用了不存在的食物、体积失控。
+ * 它抓不到什么：**「自洽但错」**。若某个食物的热量与三大营养素一起写错且比例自洽，
+ * 这个闸门会放行 —— 那需要第二道参照校核（在本机跑，参照集不进仓库）。
+ * 脚本会把这个边界打印出来，不让人误以为它证明了「数据全对」。
+ *
+ * 用法：
+ *   node scripts/check-nutrition.mjs               # 正常校验
+ *   YQ_SELFTEST=1 node scripts/check-nutrition.mjs # 自证：先故意改坏一条，验证确实会被拦下
+ *
+ * 退出码：0 = 通过（自证模式下 = 确实拦住了）；1 = 有问题；2 = 自证失败（闸门形同虚设）
+ */
+
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { gzipSync } from "node:zlib";
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+const SELFTEST = process.env.YQ_SELFTEST === "1";
+
+// ---------- 常量 ----------
+
+const CATEGORIES = ["staple", "meat", "veg", "protein", "fruit", "snack", "drink", "soup", "seasoning", "alcohol"];
+const CATEGORY_LABELS = {
+  staple: "主食", meat: "荤菜", veg: "素菜", protein: "蛋豆乳", fruit: "水果",
+  snack: "零食", drink: "饮料", soup: "汤粥", seasoning: "油脂调味", alcohol: "酒类",
+};
+
+/** 闭合校验的容差。分档是因为不同类食物的偏差来源不同 */
+const TOLERANCE = {
+  default: 0.15,
+  // 蔬菜水果的纤维与有机酸也供能，但不计入三大营养素，比值天然偏低
+  highFiber: 0.25,
+  // 纯油脂：算式应当几乎精确
+  pureFat: 0.05,
+};
+const HIGH_FIBER_CATEGORIES = new Set(["veg", "fruit"]);
+
+/** 低于这个热量就不做闭合校验：低热量食物的比值误差没有意义（分母太小） */
+const CLOSURE_KCAL_FLOOR = 20;
+
+/** 每 100g 的物理上限 */
+const LIMITS = {
+  kcal: 900,      // 纯油脂约 899
+  macro: 100,     // 蛋白/脂肪/碳水各自不可能超过 100g
+  sodium: 40000,  // 纯食盐约 39311 mg/100g
+};
+
+/** 各分类至少要有多少条，避免某类空着导致统计口径出现「其他」一大坨 */
+const MIN_PER_CATEGORY = 4;
+
+/** 体积预算：懒加载后 gzip 传出去的字节数 */
+const GZIP_BUDGET = 100 * 1024;
+
+// ---------- 载入 ----------
+
+function loadJson(rel) {
+  const abs = join(ROOT, rel);
+  try {
+    return { data: JSON.parse(readFileSync(abs, "utf8")), raw: readFileSync(abs) };
+  } catch (err) {
+    console.error(`✗ 读不了 ${rel}：${err.message}`);
+    process.exit(1);
+  }
+}
+
+const foodsFile = loadJson("data/foods.zh.json");
+const portionsFile = loadJson("data/foodPortions.json");
+const LIBRARY = foodsFile.data;
+const PORTIONS = portionsFile.data;
+
+// ---------- 自证模式：先故意改坏一条 ----------
+
+let sabotaged = null;
+if (SELFTEST) {
+  const victim = LIBRARY.items.find((x) => x.id === "shupian");
+  if (!victim) {
+    console.error("✗ 自证失败：找不到用来做实验的条目 shupian");
+    process.exit(2);
+  }
+  victim.fat = 3.4; // 正确值是 34 —— 差一位小数，算式就会对不上
+  sabotaged = `把「${victim.name}」的脂肪从 34 改成 3.4`;
+}
+
+// ---------- 收集问题 ----------
+
+const problems = [];
+const fail = (where, msg) => problems.push({ where, msg });
+
+// ---------- ① 顶层结构 ----------
+
+if (typeof LIBRARY.meta?.version !== "number") fail("foods.zh.json", "meta.version 缺失或不是数字");
+if (!LIBRARY.meta?.unit) fail("foods.zh.json", "meta.unit 缺失 —— 数值口径必须写明白");
+if (!LIBRARY.meta?.updated) fail("foods.zh.json", "meta.updated 缺失");
+if (!Array.isArray(LIBRARY.items)) {
+  fail("foods.zh.json", "items 不是数组");
+  report();
+}
+if (typeof PORTIONS.meta?.version !== "number") fail("foodPortions.json", "meta.version 缺失");
+if (!Array.isArray(PORTIONS.rules)) fail("foodPortions.json", "rules 不是数组");
+
+// ---------- ② 逐条校验食物 ----------
+
+const ids = new Map();
+const nameOwners = new Map(); // 归一化名字 → food id（检测撞车）
+
+const norm = (s) => String(s).replace(/[\s\u3000]+/g, "").toLowerCase();
+const num = (v) => typeof v === "number" && Number.isFinite(v);
+
+for (const [i, f] of (LIBRARY.items ?? []).entries()) {
+  const at = `items[${i}]${f?.id ? ` (${f.id})` : ""}`;
+
+  if (!f || typeof f !== "object") { fail(at, "不是对象"); continue; }
+  if (!f.id) fail(at, "缺 id");
+  if (!f.name) fail(at, "缺 name");
+  if (!f.source) fail(at, "缺 source —— 数值来源必须标清楚，不许留空");
+  if (!CATEGORIES.includes(f.category)) fail(at, `category 非法：${JSON.stringify(f.category)}`);
+  if (f.unit !== "g" && f.unit !== "ml") fail(at, `unit 只能是 g 或 ml，实际是 ${JSON.stringify(f.unit)}`);
+
+  if (f.id) {
+    if (ids.has(f.id)) fail(at, `id 重复（已被 ${ids.get(f.id)} 占用）`);
+    else ids.set(f.id, f.name);
+  }
+
+  // 名字与别名撞车：两样食物共用一个名字，检索时就会忽左忽右
+  for (const n of [f.name, ...(f.alias ?? [])]) {
+    if (!n) continue;
+    const key = norm(n);
+    const owner = nameOwners.get(key);
+    if (owner && owner !== f.id) fail(at, `「${n}」这个名字已经被 ${owner} 占用，检索会产生歧义`);
+    else nameOwners.set(key, f.id);
+  }
+
+  // 数值本身
+  for (const k of ["kcal", "protein", "fat", "carb"]) {
+    if (!num(f[k])) fail(at, `${k} 不是有效数字：${JSON.stringify(f[k])}`);
+    else if (f[k] < 0) fail(at, `${k} 是负数：${f[k]}`);
+  }
+  if (num(f.kcal) && f.kcal > LIMITS.kcal) fail(at, `热量 ${f.kcal} 超过每 100g 的物理上限 ${LIMITS.kcal}`);
+  for (const k of ["protein", "fat", "carb"]) {
+    if (num(f[k]) && f[k] > LIMITS.macro) fail(at, `${k} ${f[k]} 超过 100g/100g`);
+  }
+  if (f.sodium !== undefined) {
+    if (!num(f.sodium) || f.sodium < 0) fail(at, `sodium 不是有效数字：${JSON.stringify(f.sodium)}`);
+    else if (f.sodium > LIMITS.sodium) fail(at, `钠 ${f.sodium} 超过纯食盐的 ${LIMITS.sodium}`);
+  }
+  if (f.fiber !== undefined && (!num(f.fiber) || f.fiber < 0)) fail(at, `fiber 不是有效数字：${JSON.stringify(f.fiber)}`);
+
+  // 三大营养素之和不能超过总质量
+  if (num(f.protein) && num(f.fat) && num(f.carb)) {
+    const mass = f.protein + f.fat + f.carb;
+    if (mass > 100.5) fail(at, `蛋白+脂肪+碳水 = ${mass.toFixed(1)}g，超过 100g/100g（水的存在决定了这不可能）`);
+  }
+
+  // 闭合校验
+  if (num(f.kcal) && num(f.protein) && num(f.fat) && num(f.carb)) {
+    if (f.category === "alcohol") {
+      // 乙醇 7 kcal/g，不在三大营养素里，这条算式对酒类不成立 —— 明确豁免而不是放宽容差
+    } else if (f.kcal < CLOSURE_KCAL_FLOOR) {
+      // 低热量食物跳过：分母太小，比值没有意义
+    } else {
+      const computed = f.protein * 4 + f.fat * 9 + f.carb * 4;
+      const delta = Math.abs(computed - f.kcal) / f.kcal;
+      const isPureFat = num(f.fat) && f.fat >= 90;
+      const tol = isPureFat ? TOLERANCE.pureFat : HIGH_FIBER_CATEGORIES.has(f.category) ? TOLERANCE.highFiber : TOLERANCE.default;
+      if (delta > tol) {
+        fail(
+          at,
+          `闭合校验不过：${f.protein}×4 + ${f.fat}×9 + ${f.carb}×4 = ${computed.toFixed(1)}，` +
+            `与标注热量 ${f.kcal} 差 ${(delta * 100).toFixed(1)}%，超过容差 ${(tol * 100).toFixed(0)}%`,
+        );
+      }
+    }
+  }
+}
+
+// ---------- ③ 分类覆盖 ----------
+
+const byCategory = new Map(CATEGORIES.map((c) => [c, 0]));
+for (const f of LIBRARY.items ?? []) {
+  if (byCategory.has(f.category)) byCategory.set(f.category, byCategory.get(f.category) + 1);
+}
+for (const [c, n] of byCategory) {
+  if (n < MIN_PER_CATEGORY) fail("分类覆盖", `${CATEGORY_LABELS[c]}(${c}) 只有 ${n} 条，至少要 ${MIN_PER_CATEGORY} 条`);
+}
+
+// ---------- ④ 份量表 ----------
+
+const allNames = new Set();
+for (const f of LIBRARY.items ?? []) {
+  for (const n of [f.name, ...(f.alias ?? [])]) if (n) allNames.add(n);
+}
+
+for (const [i, r] of (PORTIONS.rules ?? []).entries()) {
+  const at = `rules[${i}] 量词「${r?.unit ?? "?"}」`;
+  if (!r || typeof r !== "object") { fail(at, "不是对象"); continue; }
+  if (!r.unit) fail(at, "缺 unit");
+  if (!Array.isArray(r.match) || r.match.length === 0) fail(at, "match 必须是非空数组");
+  if (!Array.isArray(r.portions) || r.portions.length === 0) { fail(at, "portions 必须是非空数组"); continue; }
+
+  const defaultCount = r.portions.filter((p) => p.isDefault).length;
+  if (defaultCount > 1) fail(at, `有 ${defaultCount} 个默认档，只能有一个`);
+
+  for (const [j, p] of r.portions.entries()) {
+    const pat = `${at} 第 ${j + 1} 档`;
+    if (!p?.label) fail(pat, "缺 label");
+    if (!num(p?.grams) || p.grams <= 0) fail(pat, `grams 必须是正数，实际 ${JSON.stringify(p?.grams)}`);
+    if (p?.range) {
+      if (!Array.isArray(p.range) || p.range.length !== 2) fail(pat, "range 必须是两个数字的数组");
+      else {
+        const [lo, hi] = p.range;
+        if (!num(lo) || !num(hi) || lo > hi) fail(pat, `range 非法：[${lo}, ${hi}]`);
+        else if (p.grams < lo || p.grams > hi) fail(pat, `默认值 ${p.grams} 不在自己声明的区间 [${lo}, ${hi}] 内`);
+      }
+    }
+  }
+
+  // 死规则：match 里的词一条食物都命中不了，多半是打错了食物名
+  const hits = (r.match ?? []).filter((m) => [...allNames].some((n) => n.includes(m)));
+  if (!hits.length) fail(at, `match 里的词没有任何一条食物命中：[${(r.match ?? []).join("、")}] —— 是不是食物名打错了？`);
+}
+
+// ---------- ⑤ 体积预算 ----------
+
+const rawBytes = foodsFile.raw.length;
+const gzipBytes = gzipSync(foodsFile.raw).length;
+if (gzipBytes > GZIP_BUDGET) {
+  fail("体积预算", `食物库 gzip 后 ${(gzipBytes / 1024).toFixed(1)}KB，超过预算 ${(GZIP_BUDGET / 1024).toFixed(0)}KB`);
+}
+
+// ---------- 输出 ----------
+
+function report() {
+  const items = LIBRARY.items ?? [];
+  const rules = PORTIONS.rules ?? [];
+  const portionCount = rules.reduce((s, r) => s + (r.portions?.length ?? 0), 0);
+
+  console.log("=".repeat(72));
+  console.log(SELFTEST ? "食物库质检闸门 · 自证模式" : "食物库质检闸门");
+  console.log("=".repeat(72));
+  if (sabotaged) console.log(`已故意破坏：${sabotaged}\n`);
+
+  console.log(`食物 ${items.length} 条 · 份量规则 ${rules.length} 条（${portionCount} 个档位）`);
+  console.log(`体积 原始 ${(rawBytes / 1024).toFixed(1)}KB · gzip ${(gzipBytes / 1024).toFixed(1)}KB（预算 ${(GZIP_BUDGET / 1024).toFixed(0)}KB）`);
+  console.log("\n分类覆盖：");
+  for (const [c, n] of [...byCategory.entries()].sort((a, b) => b[1] - a[1])) {
+    console.log(`  ${CATEGORY_LABELS[c].padEnd(6)} ${String(n).padStart(3)} 条`);
+  }
+
+  const checked = items.filter((f) => f.category !== "alcohol" && num(f.kcal) && f.kcal >= CLOSURE_KCAL_FLOOR).length;
+  const skipped = items.length - checked;
+  console.log(
+    `\n闭合校验：检查了 ${checked} 条，跳过 ${skipped} 条` +
+      `（酒类含乙醇、热量低于 ${CLOSURE_KCAL_FLOOR} kcal 的条目算式不适用）`,
+  );
+
+  if (!problems.length) {
+    console.log("\n✓ 没发现问题。");
+    console.log("  注意：本闸门只能发现算术错误与结构问题，**证明不了数值全对** ——");
+    console.log("  数值本身错但比例自洽的情况，需要另一道参照校核。");
+    console.log("=".repeat(72));
+    return 0;
+  }
+
+  console.log(`\n发现 ${problems.length} 个问题：\n`);
+  for (const p of problems.slice(0, 40)) console.log(`  ✗ ${p.where}\n    ${p.msg}`);
+  if (problems.length > 40) console.log(`\n  …另有 ${problems.length - 40} 个未展开`);
+  console.log("=".repeat(72));
+  return 1;
+}
+
+const failed = report();
+
+if (SELFTEST) {
+  if (failed === 0) {
+    console.error("\n✗ 自证失败：故意改坏了数据，闸门却没拦住 —— 这个闸门形同虚设。");
+    process.exit(2);
+  }
+  console.log(`\n✓ 自证通过：破坏的数据确实被拦下了（${problems.length} 个问题）。`);
+  console.log("  永远通过的闸门等于没有闸门，所以这一步不能省。");
+  process.exit(0);
+}
+
+process.exit(failed);

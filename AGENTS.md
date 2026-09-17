@@ -47,10 +47,10 @@ git -C "$REPO" worktree remove "$DEV" && git -C "$REPO" branch -d feat/<名字>
 
 | remote | 地址 | 能否推 |
 |---|---|---|
-| **`mine`** | `https://github.com/Orang1ver/yuanqi-ledger.git` | ✅ **源码推这个**（分支 `main`） |
+| **`origin`** | `https://github.com/Orang1ver/yuanqi-ledger.git` | ✅ **源码推这个**（分支 `main`） |
 
 ```bash
-GIT_TERMINAL_PROMPT=0 git -C "$REPO" push mine main
+GIT_TERMINAL_PROMPT=0 git -C "$REPO" push origin main
 ```
 
 > 若报 `Could not resolve host: github.com`：用户机器上的 Steam++（Watt Toolkit）
@@ -121,6 +121,22 @@ cd "$REPO" && node scripts/deploy.mjs
     **LLM 只负责「听懂」与「措辞」，数值一律回库里查表**，且要过 schema 校验
     （食物必须在候选集内、克数在合理区间）。校验失败就降级为「追问用户一句」。
     让模型直接吐热量数字，数据很快会变成幻觉垃圾。
+    已落地：`lib/nutrition/`（纯函数 + 查库 + 份量解析）与 `data/foods.zh.json`（184 条）。
+    该层**不许 import UI / Next / localStorage 的东西**，id 与时间戳由调用方传进来
+    （不在里面 `Date.now()`）—— 换来的是它能在 Node 里被直接调用、被单测、被闸门检查。
+11. **「没有数据」不等于「0」**。`sodium` / `fiber` 在库里查不到时必须保持 `undefined`，
+    求和时单独报覆盖率（`sodiumCoverage` / `fiberCoverage`），**绝不悄悄按 0 计入**。
+    否则"今天钠摄入 550mg"就是个假结论，而用户会照着它做判断。
+12. **记录里的营养值是快照**。`DietEntry.nutrition` 存的是写入那一刻算出的值，
+    事后改 `data/foods.zh.json` **不会**改写历史记录。这是有意为之，别"顺手同步一下"。
+13. **份量规则的唯一来源是 `data/foodPortions.json`**，不要在 `FoodItem` 里再放一份 `portions` ——
+    两份必然漂移。`match` 是**子串匹配且先命中先赢**，所以特殊条目（「大包薯片」）
+    必须排在通用条目（「薯片」）前面；插新规则时位置比内容更容易出错。
+14. **剥前缀噪音时，长词必须排在短词前面**。`parse.ts` 的 `LEAD_NOISE` 里
+    「吃了」要排在「吃」前、「喝完了」要排在「喝」前 —— 否则「晚上吃了一包薯片」会把
+    「吃了」剥成「了」，`一包` 认不出来，最后悄悄退化成按分类兜底的估算值（量级直接错）。
+    这个 bug 已经犯过一次，探针里能一眼看出来：正确时输出「折算：1 ×『一包』70g」，
+    退化时输出「按分类兜底 50g（估算）」。
 
 ---
 
@@ -131,6 +147,15 @@ cd "$DEV"
 npx eslint .
 MSYS_NO_PATHCONV=1 BASE_PATH=/yuanqi-ledger npm run build      # 必须成功
 python scripts/verify-subpath.py                                # 子路径点击自检
+```
+
+改了**数据层 / 食物库 / 营养层**时，上面三道之外再加这四道（含义见 README「四道闸门」）：
+
+```bash
+npm run check:data        # 既有结构的数据还读得出来吗
+npm run smoke             # 真实浏览器里真的画出来了吗
+npm run check:nutrition   # 食物库算术自洽吗（只读 JSON，坏了第一道就拦）
+npm run test:nutrition    # 营养层语义对吗（无数据≠0、快照、数字只能来自一次乘法）
 ```
 
 **基线是 0 错 0 警。** 项目当前没有"预期内"的报错，所以任何报错都值得看一眼。
@@ -160,7 +185,7 @@ curl -s "https://orang1ver.github.io/yuanqi-ledger/sw.js?cb=$(date +%s)" | grep 
 
 - **中文**，讲清三件事：**改了什么 / 为什么这么改 / 怎么验证的**
 - 有副作用或取舍要主动说明（例如"改商家名会把同名的两家合并，但有快照可撤销"）
-- 顺手 commit + push 到 `mine`；网络不通就**说明情况等恢复**，不要静默跳过
+- 顺手 commit + push 到 `origin`；网络不通就**说明情况等恢复**，不要静默跳过
 - 拿到不确定的信息（用户偏好、外部约束）**先问再动手**，不要猜
 
 ---
@@ -178,6 +203,15 @@ curl -s "https://orang1ver.github.io/yuanqi-ledger/sw.js?cb=$(date +%s)" | grep 
 | 连续天数与徽章 | `lib/rewards.ts` |
 | 运动统计与里程碑 | `lib/exercise.ts` |
 | 周维度达标率 | `lib/weekly.ts` |
+| **食物库（184 条，按每 100g/ml）** | `data/foods.zh.json` |
+| **份量换算规则（82 条）** | `data/foodPortions.json` |
+| **营养纯函数核心** | `lib/nutrition/core.ts` |
+| **查库与检索** | `lib/nutrition/library.ts` |
+| **口语份量解析** | `lib/nutrition/parse.ts` |
+| **营养目标推导** | `lib/nutrition/targets.ts` |
+| 营养层单测 | `lib/nutrition/core.test.ts` |
+| 食物库质检闸门 | `scripts/check-nutrition.mjs` |
+| 看一条口语输入怎么算的 | `npm run probe -- --text "晚上吃了一包薯片，一杯奶茶"` |
 | 设计系统（颜色/按钮/卡片） | `app/globals.css`（`--yq-*` 令牌）+ `README.md` |
 | 图标 / 启动图重新生成 | `scripts/make-icons.py` |
 | 子路径自检 | `scripts/verify-subpath.py` |
