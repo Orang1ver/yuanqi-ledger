@@ -2,6 +2,7 @@ import { CheckinCard } from "./components/health/CheckinCard";
 import { ExerciseCard } from "./components/health/ExerciseCard";
 import { WeightCard } from "./components/health/WeightCard";
 import { DataOverview } from "./components/today/DataOverview";
+import { WhatToEatCard } from "./components/today/WhatToEatCard";
 import { BottomNav, PageHeader } from "./components/shell/BottomNav";
 import { SettingsButton } from "./components/shell/SettingsButton";
 import { todayISO, WEEKDAY_LABELS, weekdayIndex } from "@/lib/date";
@@ -25,6 +26,7 @@ export default function TodayPage() {
           action={<SettingsButton />}
         />
 
+        <WhatToEatCard />
         <CheckinCard />
         <WeightCard />
         <ExerciseCard compact />

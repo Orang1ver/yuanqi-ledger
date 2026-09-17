@@ -14,6 +14,8 @@ import {
   updateTakeoutDish,
 } from "@/lib/storage/takeout";
 import { AVOID_TAGS, FLAVOR_TAGS } from "@/lib/tags";
+import { estimateDish, sumEstimates } from "@/lib/nutrition/menu";
+import { DishNutrition } from "./DishNutrition";
 
 /**
  * 菜单库。
@@ -242,7 +244,9 @@ export function TakeoutLibrary() {
           </div>
         </div>
       ) : (
-        groups.map(([restaurant, list]) => (
+        groups.map(([restaurant, list]) => {
+          const est = sumEstimates(list.map((d) => estimateDish(d)));
+          return (
           <section key={restaurant} className="yq-card" style={{ marginBottom: 14 }}>
             <div className="yq-section-title">
               {renaming === restaurant ? (
@@ -304,6 +308,11 @@ export function TakeoutLibrary() {
               )}
             </div>
 
+            <p className="yq-hint" style={{ marginBottom: 8 }}>
+              这一组 {list.length} 道菜合计约 {est.loKcal}~{est.hiKcal} kcal
+              {est.unknown ? `，另有 ${est.unknown} 道估不出来（关联一下就能算）` : ""}
+            </p>
+
             {list.map((d) =>
               editing?.id === d.id ? (
                 <DishEditor
@@ -323,13 +332,20 @@ export function TakeoutLibrary() {
                 />
               ) : (
                 <div key={d.id} className="yq-row">
-                  <div style={{ minWidth: 0 }}>
+                  <div style={{ minWidth: 0, flex: 1 }}>
                     <div style={{ fontSize: 14, fontWeight: 500 }}>{d.name}</div>
                     <div className="yq-hint">
                       {d.category}
                       {d.priceRange ? ` · ${d.priceRange}` : ""}
                       {d.flavorTags.length ? ` · ${d.flavorTags.join("/")}` : ""}
                     </div>
+                    <DishNutrition
+                      dish={d}
+                      onLink={(patch) => {
+                        updateTakeoutDish(d.id, patch);
+                        setDishes(loadTakeoutDishes());
+                      }}
+                    />
                   </div>
                   <span style={{ display: "flex", gap: 4, flex: "0 0 auto" }}>
                     <button className="yq-btn yq-btn-sm yq-btn-ghost" onClick={() => setEditing(d)}>
@@ -351,7 +367,8 @@ export function TakeoutLibrary() {
               ),
             )}
           </section>
-        ))
+          );
+        })
       )}
 
       {dishes.length > 0 && (

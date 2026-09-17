@@ -75,6 +75,13 @@ export type TakeoutDish = {
   priceRange?: string;
   flavorTags: string[];
   avoidConflicts: string[];
+  /**
+   * 关联到食物库里的某条食物。菜单里只有菜名，估不出营养 ——
+   * 用户关联一次之后就记住了，之后这道菜的热量走的是与饮食记录同一个查表口径。
+   */
+  foodId?: string;
+  /** 关联时定的克数；不给就按那条食物的分类兜底 */
+  grams?: number;
 };
 
 // ---------- 用户饮食习惯笔记 ----------

@@ -25,7 +25,7 @@
  */
 
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -42,6 +42,7 @@ const BASE_URL = arg("base", "http://127.0.0.1:4177/yuanqi-ledger").replace(/\/+
 const DEBUG_PORT = Number(arg("port", "9333"));
 const DUMP = hasFlag("dump");
 const OUT_DIR = join(ROOT, ".tmp-smoke");
+const APP_DIR = join(ROOT, "app");
 
 const EDGE_CANDIDATES = [
   process.env.EDGE_PATH,
@@ -232,13 +233,96 @@ const isBackup = !!loaded && typeof loaded === "object" && !!loaded.data && type
 const seedData = isBackup ? loaded.data : loaded;
 const seedLabel = isBackup ? `备份文件（${Object.keys(seedData).length} 项）` : "早期版本样本（legacy-v1.json）";
 
-/** 真正要验的：界面上的文字里必须出现这些 —— 它们只能来自被注入的数据 */
+/**
+ * 真正要验的：界面上的文字里必须出现这些 —— 它们只能来自被注入的数据
+ *
+ * 饮食页要分两种情况断言，因为这两条路本来就该长得不一样：
+ *  - 样本数据里根本没有 `recipe.dietLog.v1` 这个键（早期版本从没写过它，
+ *    老用户升级后第一次进来就是这样）→ 必须显示空状态，而不是编出个 0；
+ *  - 用 `--data` 传样例备份时里面有记录
+ *    → 记录里的食物名必须真的画出来。
+ *
+ * 挑断言词不能随手拿第一条记录的名字：像「米饭」「奶茶」这种词本身就写在界面
+ * 源码里（搜索框的 placeholder，而 placeholder 也会被 probe 抓进文字），
+ * 拿它当断言等于白测 —— 数据没加载、界面照样"命中"。
+ * 所以这里先把界面源码读一遍，只保留在里面**找不到**的名字，
+ * 「这些词只可能来自注入的数据」这句话才是真的被验证了。
+ */
+const dietSeed = asList(seedData["recipe.dietLog.v1"]);
+const dietNames = pickDataOnlyWords(dietSeed.map((e) => e && e.name).filter(Boolean), APP_DIR, 2);
+console.log(
+  `▶ 饮食页断言词：${dietNames.length ? dietNames.join(" / ") : "（无记录，验空状态）"}` +
+    `（饮食记录 ${dietSeed.length} 条）`,
+);
+
+/**
+ * 首页的「今天还该吃点啥」是缺口驱动的，所以两个方向都要验：
+ * 喂了饮食记录 → 不许再说"还没有饮食记录"（证明它真读到了注入的数据）；
+ * 没喂记录 → 必须老实说"还没有饮食记录"，而不是装作知道。
+ *
+ * ⚠️ 别断言具体的缺口名（钠/纤维）—— 哪一项排第一取决于当天数据与目标，
+ * 拿它当断言会在换一份样本时莫名其妙地红。
+ */
+const homeMust = ["今天还该吃点啥", ...(dietSeed.length ? [] : ["还没有饮食记录"])];
+
 const EXPECT = [
-  { path: "/", must: [], label: "今天" },
+  {
+    path: "/",
+    must: homeMust,
+    mustNot: dietSeed.length ? ["还没有饮食记录"] : [],
+    label: "今天",
+  },
+  {
+    path: "/diet/",
+    must: dietNames.length ? dietNames : ["还没有记录"],
+    mustNot: ["NaN", "undefined"],
+    label: "饮食",
+  },
   { path: "/health/", must: ["165", "56.5", "20.8"], label: "健康小屋" },
   { path: "/takeout/", must: ["沙县小吃", "拌面"], label: "菜单库" },
   { path: "/weekly/", must: [], label: "周报" },
 ];
+
+/**
+ * 取一个「列表型」的种子值。
+ *
+ * 两种情况都要吃得下：直接喂样本 JSON 时是真数组，喂备份文件时值是被
+ * `JSON.stringify` 过一遍的**字符串**（备份就是这么存的，见下面写入 localStorage 那段）。
+ * 漏了字符串这一路，断言会静默退化成"测空状态"，测了个寂寞。
+ */
+function asList(raw) {
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw !== "string") return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+/** 把 `app/` 下所有源码拼成一坨，用来判断某个词是不是界面上本来就有的 */
+function readAppSource(dir) {
+  let out = "";
+  for (const ent of readdirSync(dir, { withFileTypes: true })) {
+    const p = join(dir, ent.name);
+    out += ent.isDirectory() ? readAppSource(p) : readFileSync(p, "utf8");
+  }
+  return out;
+}
+
+/**
+ * 从候选词里挑出「界面源码里没有」的若干个，作为只能来自数据的断言词。
+ * 长的优先（越长越具体，越不容易撞车）；都不合格时退回最长的那个，
+ * 宁可断言弱一点，也不要因为挑不出词就静默不测。
+ */
+function pickDataOnlyWords(words, appDir, limit) {
+  const source = readAppSource(appDir);
+  const distinct = [...new Set(words)];
+  const clean = distinct.filter((w) => !source.includes(w)).sort((a, b) => b.length - a.length);
+  if (clean.length) return clean.slice(0, limit);
+  return distinct.sort((a, b) => b.length - a.length).slice(0, 1);
+}
 
 const browserPath = findBrowser();
 if (!browserPath) {
@@ -337,14 +421,20 @@ try {
 
     const text = await probe(page);
 
-    const missing = exp.must.filter((s) => !text.includes(s));
-    const status = missing.length ? "✗" : "✓";
+    const missing = (exp.must ?? []).filter((s) => !text.includes(s));
+    const leaked = (exp.mustNot ?? []).filter((s) => text.includes(s));
+    const bad = missing.length > 0 || leaked.length > 0;
+    const status = bad ? "✗" : "✓";
     console.log(`${status} ${exp.label} ${exp.path}（截图 ${shotName}）`);
     if (missing.length) {
       failures.push(`${exp.label} ${exp.path} 缺少：${missing.join(" / ")}`);
       console.log(`    屏幕文字里找不到：${missing.join(" / ")}`);
     }
-    if (DUMP || missing.length) {
+    if (leaked.length) {
+      failures.push(`${exp.label} ${exp.path} 不该出现却出现了：${leaked.join(" / ")}`);
+      console.log(`    屏幕文字里不该出现：${leaked.join(" / ")}（多半是数据缺项被当成了值）`);
+    }
+    if (DUMP || bad) {
       console.log("    ── 页面文字 ──");
       console.log(
         text
@@ -358,11 +448,11 @@ try {
   }
 
   if (failures.length) {
-    console.log(`\n✗ ${failures.length} 个页面没显示出旧数据：`);
+    console.log(`\n✗ ${failures.length} 个页面没显示出应有的内容（数据来源：${seedLabel}）：`);
     for (const f of failures) console.log("   · " + f);
     process.exitCode = 1;
   } else {
-    console.log("\n✓ 界面确认显示早期版本数据（健康档案 / 体重 / 菜单库都已渲染）。");
+    console.log(`\n✓ ${EXPECT.length} 个页面都渲染出了注入的数据（来源：${seedLabel}）。`);
     console.log(`  截图在 ${OUT_DIR}`);
   }
 } catch (e) {

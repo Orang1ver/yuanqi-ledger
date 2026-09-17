@@ -13,6 +13,7 @@ import { usePathname } from "next/navigation";
 
 const TABS = [
   { href: "/", label: "今天", icon: "◉" },
+  { href: "/diet/", label: "饮食", icon: "◈" },
   { href: "/health/", label: "健康", icon: "♥" },
   { href: "/takeout/", label: "菜单", icon: "▤" },
   { href: "/weekly/", label: "周报", icon: "▦" },

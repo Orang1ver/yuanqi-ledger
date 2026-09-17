@@ -13,7 +13,7 @@
  * 为什么不能直接 `node --experimental-strip-types` 跑：
  * Node 原生 TS 剥离不做模块解析，`import { KEYS } from "./keys"` 这种
  * 无扩展名相对导入（打包器能解析、Node 不能）会直接 ERR_MODULE_NOT_FOUND。
- * 所以走 `scripts/run-continuity.mjs`：先用项目自带的 tsc 编成 CommonJS
+ * 所以走 `scripts/run-ts.mjs`：先用项目自带的 tsc 编成 CommonJS
  * （CJS 的 require 会自动补 .js 后缀），再用 node 执行。见 tsconfig.continuity.json。
  *
  * 退出码 0 = 全部读得出来；1 = 有数据读不到，不能发版。
@@ -91,6 +91,7 @@ async function main() {
   const health = await import("../lib/storage/health");
   const meals = await import("../lib/storage/meals");
   const takeout = await import("../lib/storage/takeout");
+  const diet = await import("../lib/storage/diet");
   const { loadPrefs } = await import("../lib/prefs");
   const { normalizeRewards, calcCurrentStreak } = await import("../lib/rewards");
   const { calcDailyTargets } = await import("../lib/health");
@@ -190,6 +191,22 @@ async function main() {
     assert.equal(list[0].mealSlot, "晚餐");
     assert.equal(list[0].time, "19:00", "无 time 的老记录应被补成 19:00，实际 " + list[0].time);
     return `${list.length} 条，老记录 mealSlot=${list[0].mealSlot} 已补 time=${list[0].time}`;
+  });
+
+  check("饮食日记（早期版本没有这个键）", () => {
+    // 这条测的是**最真实的升级路径**：饮食日记是新加的键，早期版本从没写过它，
+    // 所以老用户第一次进来时 localStorage 里根本没有 `recipe.dietLog.v1`。
+    // 「读出空表」和「读出 0」在界面上是两回事 —— 前者显示空状态，后者会显示"今天 0 kcal"。
+    assert.equal(
+      Object.prototype.hasOwnProperty.call(legacy, "recipe.dietLog.v1"),
+      false,
+      "样本数据里不该有这个键：有的话这条断言就测不到真实的升级路径了",
+    );
+    assert.equal(diet.loadDietEntries().length, 0, "键不存在时该读出空表，而不是抛错");
+    assert.equal(diet.entriesOn("2026-09-17").length, 0);
+    assert.equal(diet.entriesBetween("2026-09-01", "2026-09-30").length, 0);
+    assert.equal(diet.frequentFoods().length, 0);
+    return "键不存在 → 读出空表（升级用户首次进入就是这种情况）";
   });
 
   check("常用食材 / 偏好笔记 / 周分析", () => {

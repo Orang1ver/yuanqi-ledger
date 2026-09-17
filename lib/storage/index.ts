@@ -3,6 +3,7 @@
 export * from "./keys";
 export * from "./io";
 export * from "./meals";
+export * from "./diet";
 export * from "./takeout";
 export * from "./health";
 export * from "./backup";

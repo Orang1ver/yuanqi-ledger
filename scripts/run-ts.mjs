@@ -6,12 +6,12 @@
  * require 自带补后缀行为，用的还是项目已装的编译器，不多拉任何依赖。
  *
  * 三个用途共用这一份编译逻辑（之前是三份几乎相同的脚本，那种重复迟早会各自跑偏）：
- *   npm run check:data      数据延续自检
- *   npm run test:nutrition  营养核心单元测试（走 node --test）
- *   npm run probe           把一句中文口语算成营养数字
+ *   npm run check:data   数据延续自检
+ *   npm test             单元测试（走 node --test，可一次传多个测试文件）
+ *   npm run probe        把一句中文口语算成营养数字
  *
  * 用法：
- *   node scripts/run-ts.mjs <入口.ts> [--test] [-- 传给被测脚本的参数]
+ *   node scripts/run-ts.mjs <入口.ts> [更多入口.ts ...] [--test] [-- 传给被测脚本的参数]
  */
 
 import { execFileSync } from "node:child_process";
@@ -28,10 +28,14 @@ const own = sep === -1 ? argv : argv.slice(0, sep);
 const passthrough = sep === -1 ? [] : argv.slice(sep + 1);
 
 const useTestRunner = own.includes("--test");
-const entryRel = own.find((a) => !a.startsWith("--"));
+const entryRels = own.filter((a) => !a.startsWith("--"));
 
-if (!entryRel) {
-  console.error("用法：node scripts/run-ts.mjs <入口.ts> [--test] [-- 参数...]");
+if (!entryRels.length) {
+  console.error("用法：node scripts/run-ts.mjs <入口.ts> [更多入口.ts ...] [--test] [-- 参数...]");
+  process.exit(2);
+}
+if (!useTestRunner && entryRels.length > 1) {
+  console.error("只有单测模式（--test）能传多个入口；普通脚本一次只能跑一个。");
   process.exit(2);
 }
 
@@ -65,16 +69,21 @@ if (existsSync(dataDir)) {
   }
 }
 
-const entryAbs = resolve(root, entryRel);
-const outEntry = join(outDir, relative(root, entryAbs).replace(/\.ts$/, ".js"));
+const outEntries = entryRels.map((rel) => {
+  const abs = resolve(root, rel);
+  return join(outDir, relative(root, abs).replace(/\.ts$/, ".js"));
+});
 
-if (!existsSync(outEntry)) {
-  console.error(`编译产物缺失：${outEntry}`);
+const missing = outEntries.filter((p) => !existsSync(p));
+if (missing.length) {
+  console.error(`编译产物缺失：\n  ${missing.join("\n  ")}`);
   console.error("（入口是否在 tsconfig.continuity.json 的 include 范围内？）");
   process.exit(1);
 }
 
-const args = useTestRunner ? ["--test", outEntry, ...passthrough] : [outEntry, ...passthrough];
+const args = useTestRunner
+  ? ["--test", ...outEntries, ...passthrough]
+  : [outEntries[0], ...passthrough];
 
 try {
   execFileSync(process.execPath, args, { cwd: root, stdio: "inherit" });

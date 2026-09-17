@@ -7,7 +7,26 @@ import { calcDailyTargets } from "@/lib/health";
 import { exerciseStats, weekStats } from "@/lib/exercise";
 import { deltaVsDaysAgo } from "@/lib/weight";
 import { loadCheckin, loadExercises, loadHealthProfile, loadWeights } from "@/lib/storage/health";
+import { entriesOn } from "@/lib/storage";
+import { sumNutrition } from "@/lib/nutrition/core";
+import { scoreDay, summarizeWeek } from "@/lib/nutrition/score";
+import { calcNutritionTargets } from "@/lib/nutrition/targets";
+import type { NutritionTargets } from "@/lib/nutrition/types";
 import { readinessOfWeek } from "@/lib/weekly";
+
+/**
+ * 一周里每天的饮食质量分。
+ *
+ * 没记录的那天给 `null` 而不是 0 —— 「没记」和「吃得差」是两件事，
+ * 混在一起会让分数跟着"记录习惯"走，而不是跟着"吃得好不好"走（详见 summarizeWeek）。
+ */
+function weekScores(start: string, targets: NutritionTargets) {
+  return weekDates(start).map((d) => {
+    const entries = entriesOn(d);
+    if (!entries.length) return { date: d, score: null };
+    return { date: d, score: scoreDay({ entries, totals: sumNutrition(entries), targets }) };
+  });
+}
 
 /**
  * 周报。
@@ -41,6 +60,14 @@ export default function WeeklyPage() {
   }, [weekStart, today, days]);
 
   const readiness = targets ? readinessOfWeek(data.checkins, targets) : null;
+
+  const nutritionTargets = profile ? calcNutritionTargets(profile) : null;
+  const diet = useMemo(() => {
+    if (!nutritionTargets) return null;
+    // 与上一周比才有意义 —— 单看一周的绝对分，用户没法判断自己是在变好还是变差
+    const prev = summarizeWeek({ days: weekScores(addDays(weekStart, -7), nutritionTargets) });
+    return summarizeWeek({ days: weekScores(weekStart, nutritionTargets), previousAverage: prev.average });
+  }, [weekStart, nutritionTargets]);
 
   return (
     <>
@@ -116,6 +143,87 @@ export default function WeeklyPage() {
           ) : null}
         </section>
 
+        {/* 饮食质量 */}
+        <section className="yq-card" style={{ marginBottom: 14 }}>
+          <div className="yq-section-title">
+            <span>饮食质量</span>
+            <span className="yq-hint">{diet ? `${diet.scoredDays} 天可评` : "缺健康档案"}</span>
+          </div>
+
+          {!diet ? (
+            <div className="yq-empty">
+              还没填健康档案，没有目标就算不出质量分。
+              <br />
+              去「健康」页填一下，这里会按「实际 vs 目标」给你每天的分数。
+            </div>
+          ) : diet.average === null ? (
+            <div className="yq-empty">
+              这一周还没有可评的饮食记录。
+              <br />
+              去「饮食」页记几天，这里就能看出吃得怎么样、比上周好还是差。
+            </div>
+          ) : (
+            <>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                <span className="yq-num" style={{ fontSize: 30, fontWeight: 700, color: scoreColor(diet.average) }}>
+                  {diet.average}
+                </span>
+                <span className="yq-hint">分 · 按 {diet.scoredDays} 天平均</span>
+                {diet.delta !== null && (
+                  <span
+                    className="yq-num"
+                    style={{ marginLeft: "auto", color: diet.delta >= 0 ? "var(--yq-primary-ink)" : "var(--yq-accent-ink)" }}
+                  >
+                    比上周 {diet.delta >= 0 ? "+" : ""}
+                    {diet.delta}
+                  </span>
+                )}
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: `repeat(${days.length}, 1fr)`, gap: 5, margin: "12px 0 8px" }}>
+                {diet.days.map((d) => (
+                  <div key={d.date} style={{ textAlign: "center" }} title={`${d.date}｜${d.score ?? "没有可评的记录"}`}>
+                    <div
+                      style={{
+                        height: 56,
+                        display: "flex",
+                        alignItems: "flex-end",
+                        justifyContent: "center",
+                        background: "var(--yq-surface-2)",
+                        borderRadius: 6,
+                        padding: 3,
+                      }}
+                    >
+                      {d.score !== null && (
+                        <span
+                          style={{
+                            width: "70%",
+                            height: `${Math.max(4, d.score)}%`,
+                            background: scoreColor(d.score),
+                            borderRadius: 3,
+                          }}
+                        />
+                      )}
+                    </div>
+                    <div className="yq-hint" style={{ fontSize: 10, marginTop: 3 }}>
+                      {Number(d.date.slice(8))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <p className="yq-hint" style={{ lineHeight: 1.6 }}>
+                {diet.best && diet.worst && diet.scoredDays > 1
+                  ? `最好 ${diet.best.score} 分（${formatShort(diet.best.date)}），最差 ${diet.worst.score} 分（${formatShort(
+                      diet.worst.date,
+                    )}）。`
+                  : ""}
+                没记录的那天不参与平均 —— 一周只记两天也算两天，不按 7 天摊。
+              </p>
+            </>
+          )}
+        </section>
+
         {/* 运动 */}
         <section className="yq-card" style={{ marginBottom: 14 }}>
           <div className="yq-section-title">
@@ -172,6 +280,13 @@ export default function WeeklyPage() {
       <BottomNav />
     </>
   );
+}
+
+/** 分数对应的颜色。低分用点缀色（偏暖橙）而不是红色 —— 饮食没有"错误"这回事 */
+function scoreColor(score: number): string {
+  if (score >= 80) return "var(--yq-primary)";
+  if (score >= 60) return "var(--yq-info)";
+  return "var(--yq-accent)";
 }
 
 function BigStat({ label, value, unit, color }: { label: string; value: string; unit: string; color: string }) {

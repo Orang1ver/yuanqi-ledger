@@ -208,6 +208,64 @@ const mealRecords = [
   },
 ];
 
+// ---------- 饮食日记（`recipe.dietLog.v1`） ----------
+//
+// 数值在这里算，而不是手写死 —— 手写的数字没人复核，会悄悄和食物库脱节。
+// 这条乘法与 `lib/nutrition/core.ts` 的 `nutritionOf` 是同一个式子（每 100g 值 × grams/100）；
+// 刻意不在生成器里 import 应用的 TS 模块（纯 .mjs 引入编译链路会把这份工具的依赖搞复杂），
+// 代价是"两处同一个式子"，所以下面自检里会逐条重算复核一遍。
+
+const FOODS = JSON.parse(readFileSync(join(ROOT, "data", "foods.zh.json"), "utf8"));
+const foodById = (id) => FOODS.items.find((f) => f.id === id);
+
+/** 造一条饮食记录；`off` 是距今天的天数（0 = 今天） */
+function dietEntry({ id, foodId, grams, time, slot, amount, unitLabel, off = 0 }) {
+  const f = foodById(foodId);
+  if (!f) throw new Error(`样例数据引用了库里不存在的食物 id：${foodId}`);
+  const k = grams / 100;
+  return {
+    id,
+    date: day(off),
+    time,
+    mealSlot: slot,
+    foodId,
+    name: f.name,
+    category: f.category,
+    amount,
+    unitLabel,
+    grams,
+    nutrition: {
+      kcal: f.kcal * k,
+      protein: f.protein * k,
+      fat: f.fat * k,
+      carb: f.carb * k,
+      // 缺哪项就**不要写这一项**：写成 0 会让页面把"不知道"显示成"没有"
+      ...(f.sodium !== undefined ? { sodium: f.sodium * k } : {}),
+      ...(f.fiber !== undefined ? { fiber: f.fiber * k } : {}),
+    },
+    source: "db",
+    createdAt: at(off, Number(time.slice(0, 2))),
+  };
+}
+
+// 今天这一天故意吃得"零食偏多、钠偏高、蔬果偏少" —— 这样饮食页的建议卡与质量分
+// 有真实内容可看，而不是一片满分或一片空白。库里 110 条食物没有纤维数据，
+// 所以这份记录里纤维覆盖率也不满，正好能验「数据不全时会说出来」。
+const dietLog = [
+  dietEntry({ id: "demo-diet-1", foodId: "doujiang-sweet", grams: 300, time: "08:10", slot: "早餐", amount: 1, unitLabel: "一杯" }),
+  dietEntry({ id: "demo-diet-2", foodId: "jidan-zhu", grams: 50, time: "08:10", slot: "早餐", amount: 1, unitLabel: "一个" }),
+  dietEntry({ id: "demo-diet-3", foodId: "mantou", grams: 100, time: "08:15", slot: "早餐", amount: 1, unitLabel: "一个" }),
+  dietEntry({ id: "demo-diet-4", foodId: "rice-cooked", grams: 180, time: "12:20", slot: "午餐", amount: 1, unitLabel: "一碗" }),
+  dietEntry({ id: "demo-diet-5", foodId: "xianggu-qingcai", grams: 200, time: "12:25", slot: "午餐", amount: 1, unitLabel: "一份" }),
+  dietEntry({ id: "demo-diet-6", foodId: "rice-cooked", grams: 150, time: "19:00", slot: "晚餐", amount: 1, unitLabel: "一碗" }),
+  dietEntry({ id: "demo-diet-7", foodId: "xianggu-qingcai", grams: 200, time: "19:05", slot: "晚餐", amount: 1, unitLabel: "一份" }),
+  dietEntry({ id: "demo-diet-8", foodId: "shupian", grams: 70, time: "21:30", slot: "加餐", amount: 1, unitLabel: "一包" }),
+  dietEntry({ id: "demo-diet-9", foodId: "naicha-quantang", grams: 500, time: "21:35", slot: "加餐", amount: 1, unitLabel: "中杯" }),
+  // 昨天留一条，用来验"切日期能看前一天"
+  dietEntry({ id: "demo-diet-10", foodId: "rice-cooked", grams: 200, time: "12:00", slot: "午餐", amount: 1, unitLabel: "一碗", off: -1 }),
+  dietEntry({ id: "demo-diet-11", foodId: "xianggu-qingcai", grams: 250, time: "12:05", slot: "午餐", amount: 1, unitLabel: "一份", off: -1 }),
+];
+
 // ---------- 其余 ----------
 
 const commonIngredients = [
@@ -257,7 +315,7 @@ const demo = {
     },
   },
   "recipe.prefs.v1": { cupMl: 300, theme: "system" },
-  "recipe.dietLog.v1": [],
+  "recipe.dietLog.v1": dietLog,
   "recipe.iosInstallHintDismissed.v1": true,
   "recipe.updateBannerDismissed.v1": true,
 };
@@ -278,6 +336,38 @@ const km = exercises.reduce((s, e) => s + (e.distanceKm ?? 0), 0);
 if (km >= 50) problems.push(`累计里程 ${km}km 已过 50，ex-km-50 会意外解锁，看不到"还差 N km"`);
 if (exercises.length !== 10) problems.push(`运动应为 10 条（刚好够 ex-count-10），实际 ${exercises.length} 条`);
 if (!mealRecords.some((m) => !("time" in m))) problems.push("缺少「没有 time 字段」的早期版本饮食记录");
+
+// 饮食日记：逐条把 nutrition 重算一遍 —— 生成器里那条乘法和 nutritionOf 是同一个式子，
+// 分开写就有脱节的可能，所以这里必须复核，不能只信上面的写法。
+for (const e of dietLog) {
+  const f = foodById(e.foodId);
+  const k = e.grams / 100;
+  for (const key of ["kcal", "protein", "fat", "carb"]) {
+    if (Math.abs(e.nutrition[key] - f[key] * k) > 1e-9) {
+      problems.push(`饮食记录 ${e.id} 的 ${key} 与食物库对不上：${e.nutrition[key]} vs ${f[key] * k}`);
+    }
+  }
+  // 「没有数据」≠「0」：库里没有的成分，记录里必须整项缺席，不能是 0
+  for (const key of ["sodium", "fiber"]) {
+    const hasInLib = f[key] !== undefined;
+    const hasInEntry = e.nutrition[key] !== undefined;
+    if (hasInLib && !hasInEntry) problems.push(`饮食记录 ${e.id} 漏了库里有的 ${key}`);
+    if (!hasInLib && hasInEntry) {
+      problems.push(`饮食记录 ${e.id} 给库里没有的 ${key} 编了个值（${e.nutrition[key]}），会把"不知道"显示成"没有"`);
+    }
+  }
+}
+if (!dietLog.some((e) => e.date === day(0))) {
+  problems.push("今天没有任何饮食记录 —— 饮食页一打开就是空的，看不出效果");
+}
+{
+  const todayKcal = dietLog
+    .filter((e) => e.date === day(0))
+    .reduce((s, e) => s + e.nutrition.kcal, 0);
+  if (todayKcal < 900 || todayKcal > 3000) {
+    problems.push(`今天的总热量 ${Math.round(todayKcal)}kcal 不像一天的饭量，八成是份量写错了量级`);
+  }
+}
 if (problems.length) {
   console.error("✗ 样例数据自身不一致，先修生成器：");
   for (const p of problems) console.error(`  - ${p}`);
@@ -312,6 +402,16 @@ console.log(`    打卡       ${Object.keys(dailyCheckins).length} 天（连续 
 console.log(`    体重       ${Object.keys(weights).length} 条，${WEIGHT_PLAN[0][1]} → ${WEIGHT_PLAN.at(-1)[1]}kg`);
 console.log(`    运动       ${exercises.length} 条，累计 ${Math.round(km * 10) / 10}km（ex-km-50 保持未解锁）`);
 console.log(`    饮食       ${mealRecords.length} 条，其中 1 条是早期版本无 time 的格式`);
+{
+  const today = dietLog.filter((e) => e.date === day(0));
+  const kcal = today.reduce((s, e) => s + e.nutrition.kcal, 0);
+  const sodium = today.reduce((s, e) => s + (e.nutrition.sodium ?? 0), 0);
+  const fiberCovered = today.filter((e) => e.nutrition.fiber !== undefined).length;
+  console.log(
+    `    饮食日记   ${dietLog.length} 条（今天 ${today.length} 条 = ${Math.round(kcal)}kcal / 钠 ${Math.round(sodium)}mg）` +
+      `，纤维只有 ${fiberCovered}/${today.length} 条有数据`,
+  );
+}
 console.log(`    菜单库     ${takeoutMock.length} 道（示例种子 + 早期版本那条）`);
 console.log(`    每日达标线 喝水 ${WATER_TARGET}ml · 步数 ${STEP_TARGET} 步（由上面档案推出）`);
 console.log("\n  导入方式：设置 → 数据备份 → 导入备份 → 选上面那个文件 → **覆盖** 模式\n");

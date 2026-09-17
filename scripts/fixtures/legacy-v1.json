@@ -54,6 +54,5 @@
   "recipe.apikeys.v1": { "deepseekKey": "sk-legacy" },
   "recipe.takeoutUndo.v1": { "reason": "删除商家", "at": 1790, "dishes": [] },
   "recipe.iosInstallHintDismissed.v1": true,
-  "recipe.updateBannerDismissed.v1": true,
-  "recipe.dietLog.v1": []
+  "recipe.updateBannerDismissed.v1": true
 }

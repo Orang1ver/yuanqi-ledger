@@ -253,6 +253,21 @@ function intakeOf(t: NutritionTotals, key: NutrientStatus["key"]): number | unde
 }
 
 /**
+ * 有数据但**不全**时的提醒语。
+ *
+ * 这一条是被食物库的实际情况逼出来的：库里 184 条**全都有钠**，但**有 110 条没有纤维**。
+ * 于是"今天纤维 8g"这种数字，可能只基于 9 条记录里的 2 条。
+ * 如果只在完全没有数据时才提示，那这种"部分数据算出来的确定数字"就会一路绿灯 ——
+ * 它比完全没有数据更危险，因为它看起来是有依据的。
+ */
+function coverageNote(key: NutrientStatus["key"], intake: NutritionTotals): string | undefined {
+  if (key !== "sodium" && key !== "fiber") return undefined;
+  const cov = key === "sodium" ? intake.sodiumCoverage : intake.fiberCoverage;
+  if (cov >= 0.9) return undefined;
+  return `只基于 ${Math.round(cov * 100)}% 的记录，其余条目没有这项数据`;
+}
+
+/**
  * 把摄入量与目标逐项对比。
  *
  * 数据不全时不硬判：钠没有数据就返回 `unknown` 并附说明，
@@ -301,7 +316,7 @@ export function compareToTargets(
       verdict = ratio < 1 - tol ? "low" : ratio > 1 + tol ? "high" : "ok";
     }
 
-    return { ...base, ratio, verdict };
+    return { ...base, ratio, verdict, note: coverageNote(meta.key, intake) };
   });
 }
 

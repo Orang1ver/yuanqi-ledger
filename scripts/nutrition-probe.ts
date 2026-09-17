@@ -17,12 +17,12 @@
  *   npm run probe -- --text "一杯奶茶" --json     # 输出机器可读结果
  */
 
-import { makeDietEntry, resolvePortion, roundValues, sumNutrition, compareToTargets, fallbackGrams } from "../lib/nutrition/core";
-import { findFoodByName, libraryMeta, portionTable, foodCount, searchFoods } from "../lib/nutrition/library";
-import { parseFragment, splitFragments } from "../lib/nutrition/parse";
+import { compareToTargets, roundValues, sumNutrition } from "../lib/nutrition/core";
+import { foodCount, libraryMeta } from "../lib/nutrition/library";
+import { candidateToEntry, resolveText } from "../lib/nutrition/quickadd";
 import { referenceTargets } from "../lib/nutrition/targets";
-import type { DietEntry, FoodItem, NutritionTotals } from "../lib/nutrition/types";
-import { formatDateISO, mealSlotFromTime, nowHM } from "../lib/date";
+import type { DietEntry, NutritionTotals } from "../lib/nutrition/types";
+import { formatDateISO, nowHM } from "../lib/date";
 
 // ---------- 参数 ----------
 
@@ -43,86 +43,24 @@ if (!text) {
 }
 
 // ---------- 逐段解析 ----------
+//
+// 切句、找食物、折算克数、写出依据 —— 这部分逻辑**不在这里实现**，
+// 而是从 `lib/nutrition/quickadd.ts` 拿。界面用的是同一份，
+// 两边各写一份的话，「探针说 70g、界面算出 50g」这种不一致迟早会出现，
+// 而且会先出现在用户手上，不是出现在这里。
 
-type Item = {
-  fragment: string;
-  /** 剥掉时间词/动词后的部分，展示出来便于解释「为什么这样算」 */
-  cleaned: string;
-  amount: number;
-  unit?: string;
-  query: string;
-  food?: FoodItem;
-  grams?: number;
-  /** 这个克数是怎么来的 —— 必须能说清，否则数字不可信 */
-  basis: string;
-  estimated: boolean;
-  entry?: DietEntry;
-  failed?: string;
-};
+const items = resolveText(text).map((c, i) => ({
+  c,
+  entry: c.missing
+    ? undefined
+    : candidateToEntry(c, {
+        id: `probe-${i}`,
+        createdAt: Date.now(),
+        date: formatDateISO(new Date()),
+        time: nowHM(),
+      }),
+}));
 
-function resolveOne(fragment: string, index: number): Item {
-  const parsed = parseFragment(fragment);
-  const item: Item = {
-    fragment,
-    cleaned: parsed.cleaned,
-    amount: parsed.amount,
-    unit: parsed.unit,
-    query: parsed.name,
-    basis: "",
-    estimated: false,
-  };
-
-  // 先精确名，再模糊检索 —— 精确命中优先，避免「奶茶」被「奶茶（无糖）」抢走
-  const food = findFoodByName(parsed.name) ?? searchFoods(parsed.name, 1)[0];
-  if (!food) {
-    item.failed = `库里没有匹配到「${parsed.name}」`;
-    return item;
-  }
-  item.food = food;
-
-  let grams: number;
-  if (parsed.unit === "克") {
-    grams = parsed.amount;
-    item.basis = `直接给了克数 ${parsed.amount}g`;
-  } else if (parsed.unit) {
-    const hit = resolvePortion(portionTable(), food, parsed.unit);
-    if (hit) {
-      grams = hit.grams * parsed.amount;
-      const range = hit.portion.range ? `，常见区间 ${hit.portion.range[0]}~${hit.portion.range[1]}g` : "";
-      item.basis = `${parsed.amount} × 「${hit.portion.label}」${hit.grams}g${range}`;
-    } else {
-      // 份量表里没有这条组合 —— 按分类兜底，并**明确标成估算**
-      grams = fallbackGrams(food) * parsed.amount;
-      item.estimated = true;
-      item.basis = `份量表里没有「${parsed.unit}」这条，按${food.category}分类兜底 ${fallbackGrams(food)}g × ${parsed.amount}（估算）`;
-    }
-  } else {
-    grams = fallbackGrams(food) * parsed.amount;
-    item.estimated = true;
-    item.basis = `没写份量，按分类兜底 ${fallbackGrams(food)}g × ${parsed.amount}（估算）`;
-  }
-
-  item.grams = grams;
-  const now = Date.now();
-  const hm = nowHM();
-  item.entry = makeDietEntry({
-    id: `probe-${index}`,
-    createdAt: now,
-    date: formatDateISO(new Date()),
-    time: hm,
-    mealSlot: mealSlotFromTime(hm),
-    food,
-    name: food.name,
-    amount: parsed.amount,
-    unitLabel: parsed.unit ?? "克",
-    grams,
-    source: "db",
-  });
-  return item;
-}
-
-const fragments = splitFragments(text);
-const items = fragments.map((f, i) => resolveOne(f, i));
 const entries = items.map((x) => x.entry).filter((e): e is DietEntry => !!e);
 const totals: NutritionTotals = sumNutrition(entries);
 const targets = referenceTargets(refKcal, refSodium);
@@ -137,15 +75,15 @@ if (wantJson) {
     JSON.stringify(
       {
         text,
-        items: items.map((x) => ({
-          fragment: x.fragment,
-          matched: x.food ? { id: x.food.id, name: x.food.name, source: x.food.source } : null,
-          amount: x.amount,
-          unit: x.unit ?? null,
-          grams: x.grams ?? null,
-          basis: x.basis,
-          estimated: x.estimated,
-          failed: x.failed ?? null,
+        items: items.map(({ c }) => ({
+          fragment: c.raw,
+          matched: c.food ? { id: c.food.id, name: c.food.name, source: c.food.source } : null,
+          amount: c.amount,
+          unit: c.unitLabel,
+          grams: c.grams || null,
+          basis: c.basis,
+          estimated: c.estimated,
+          failed: c.missing ? `库里没有匹配到「${c.name}」` : null,
         })),
         totals: roundValues(totals.values),
         coverage: { sodium: totals.sodiumCoverage, fiber: totals.fiberCoverage },
@@ -156,7 +94,7 @@ if (wantJson) {
       2,
     ),
   );
-  process.exit(items.some((x) => x.failed) ? 1 : 0);
+  process.exit(items.some((x) => x.c.missing) ? 1 : 0);
 }
 
 const line = "─".repeat(66);
@@ -170,18 +108,18 @@ console.log(`\n${line}`);
 console.log("逐项追溯");
 console.log(line);
 
-for (const x of items) {
-  if (x.failed) {
-    console.log(`\n✗ 「${x.fragment}」`);
-    console.log(`    ${x.failed}，未计入合计`);
+for (const { c, entry } of items) {
+  if (!entry) {
+    console.log(`\n✗ 「${c.raw}」`);
+    console.log(`    ${c.basis}，未计入合计`);
     continue;
   }
-  const n = x.entry!.nutrition;
-  console.log(`\n✓ 「${x.fragment}」 → ${x.food!.name}  (库 id: ${x.food!.id})`);
-  if (x.cleaned !== x.fragment) console.log(`    解析：剥掉时间词与动词 → 「${x.cleaned}」`);
-  console.log(`    折算：${x.basis} → 共 ${x.grams}g${x.estimated ? "  ⚠ 估算" : ""}`);
-  console.log(`    依据（每 100${x.food!.unit}）：${x.food!.kcal} kcal · 蛋白 ${x.food!.protein}g · 脂肪 ${x.food!.fat}g · 碳水 ${x.food!.carb}g${x.food!.sodium !== undefined ? ` · 钠 ${x.food!.sodium}mg` : " · 钠 无数据"}`);
-  console.log(`    来源：${x.food!.source}`);
+  const n = entry.nutrition;
+  console.log(`\n✓ 「${c.raw}」 → ${c.food!.name}  (库 id: ${c.food!.id})`);
+  if (c.cleaned !== c.raw) console.log(`    解析：剥掉时间词与动词 → 「${c.cleaned}」`);
+  console.log(`    折算：${c.basis}${c.estimated ? "  ⚠ 估算" : ""}`);
+  console.log(`    依据（每 100${c.food!.unit}）：${c.food!.kcal} kcal · 蛋白 ${c.food!.protein}g · 脂肪 ${c.food!.fat}g · 碳水 ${c.food!.carb}g${c.food!.sodium !== undefined ? ` · 钠 ${c.food!.sodium}mg` : " · 钠 无数据"}`);
+  console.log(`    来源：${c.food!.source}`);
   console.log(
     `    本条：${f1(n.kcal)} kcal · 蛋白 ${f1(n.protein)}g · 脂肪 ${f1(n.fat)}g · 碳水 ${f1(n.carb)}g` +
       (n.sodium !== undefined ? ` · 钠 ${Math.round(n.sodium)}mg` : " · 钠 ——"),
@@ -219,4 +157,4 @@ for (const s of statuses) {
 console.log(`\n方向说明：热量/脂肪/碳水看「是否落在区间」，钠看「别超」，蛋白/纤维看「够不够」。`);
 console.log(`标记 ↑ = 超了，↓ = 不足，无标记 = 在范围内。`);
 
-process.exit(items.some((x) => x.failed) ? 1 : 0);
+process.exit(items.some((x) => x.c.missing) ? 1 : 0);

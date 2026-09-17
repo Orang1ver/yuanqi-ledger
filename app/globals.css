@@ -249,6 +249,18 @@ input[type="number"] {
   font-size: 13px;
 }
 
+/* 行内的文字按钮：跟在说明文字后面（「不准？关联一下」），不该长得像主按钮 */
+.yq-link-btn {
+  border: none;
+  background: none;
+  padding: 0 0 0 6px;
+  font: inherit;
+  color: var(--yq-primary-ink);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
 /* 输入 */
 
 .yq-input,

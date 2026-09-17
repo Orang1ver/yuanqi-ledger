@@ -3,7 +3,7 @@
  *
  * 用 Node 自带的 `node:test` + `node:assert`，**不引入任何测试框架** ——
  * 这台机器装不上 npm 包，而这几百行纯函数恰恰是最该被测试覆盖的部分。
- * 运行方式见 `npm run test:nutrition`（内部是 tsc 编成 CJS 再交给 node --test）。
+ * 运行方式见 `npm test`（内部是 tsc 编成 CJS 再交给 node --test）。
  *
  * 重点覆盖三件事：
  *   1. **「没数据」不等于 0** —— 这是全层最容易出错、后果最严重的约定
