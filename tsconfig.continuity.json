@@ -1,0 +1,25 @@
+{
+  // 仅供 `npm run check:data` 使用：把 lib/ 与自检脚本编成 CommonJS 丢到 .tmp-check/，
+  // 让纯 Node 能直接跑（CJS 的 require 会自动补 .js 后缀，绕开 Node 不做无扩展名解析的问题）。
+  //
+  // 刻意不复用根 tsconfig.json：那边是 moduleResolution: bundler，只做类型检查不产出。
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "types": ["node"],
+    "rootDir": ".",
+    "outDir": ".tmp-check",
+    "noEmit": false,
+    "noEmitOnError": true,
+    "strict": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "isolatedModules": false,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["lib/**/*.ts", "data/**/*.json", "scripts/**/*.json", "scripts/check-data-continuity.ts"],
+  "exclude": ["node_modules", ".next", "out", ".tmp-check"]
+}

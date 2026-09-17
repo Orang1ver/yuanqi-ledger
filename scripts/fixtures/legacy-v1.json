@@ -1,0 +1,59 @@
+{
+  "recipe.healthProfile.v1": {
+    "sex": "女",
+    "age": 26,
+    "heightCm": 165,
+    "weightKg": 56.5,
+    "activityLevel": "轻度活动",
+    "goal": "维持健康",
+    "allergies": "乳糖不耐",
+    "conditions": "肠胃偏弱",
+    "updatedAt": 1789000000000
+  },
+  "recipe.dailyCheckins.v1": {
+    "2026-09-15": { "date": "2026-09-15", "waterMl": 1800, "steps": 8200, "sleepHours": 7.5, "mood": "好", "updatedAt": 1789 },
+    "2026-09-16": { "date": "2026-09-16", "waterMl": 2200, "steps": 11200, "updatedAt": 1790 }
+  },
+  "recipe.weights.v1": {
+    "2026-09-10": { "date": "2026-09-10", "weightKg": 57.2, "at": 1788 },
+    "2026-09-16": { "date": "2026-09-16", "weightKg": 56.4, "at": 1790 }
+  },
+  "recipe.exercises.v1": [
+    { "id": "e1", "date": "2026-09-16", "type": "跑步", "minutes": 30, "distanceKm": 4.2, "note": "夜跑", "at": 1790 },
+    { "id": "e2", "date": "2026-09-14", "type": "散步", "minutes": 45, "at": 1789 }
+  ],
+  "recipe.exerciseAwards.v1": { "ex-first": "2026-09-14", "ex-count-10": "2026-09-16" },
+  "recipe.rewards.v1": {
+    "days": { "2026-09-15": { "streak": 1, "at": 1789 }, "2026-09-16": { "streak": 2, "at": 1790 } },
+    "badges": { "streak-3": "2026-09-17" },
+    "celebrated": ["2026-09-16"]
+  },
+  "recipe.takeoutMock.v2": [
+    { "id": "t1", "restaurant": "沙县小吃", "name": "拌面", "category": "粉面米线", "priceRange": "¥10-14", "flavorTags": ["咸鲜"], "avoidConflicts": [] }
+  ],
+  "recipe.takeoutSeeded.v1": true,
+  "recipe.mealRecords.v1": [
+    {
+      "id": "m1",
+      "date": "2026-09-16",
+      "mealSlot": "晚餐",
+      "dishes": [
+        { "name": "番茄炒蛋", "role": "主菜", "ingredients": [{ "label": "番茄", "fromPantry": true }], "flavorTags": ["甜口"] }
+      ],
+      "channel": "自己做",
+      "avoidTags": [],
+      "methodTags": ["快炒"],
+      "source": "manual",
+      "createdAt": 1790
+    }
+  ],
+  "recipe.commonIngredients.v1": [{ "id": "i1", "label": "西兰花", "createdAt": 1788 }],
+  "recipe.userProfile.v1": { "content": "不爱吃香菜", "updatedAt": 1790 },
+  "recipe.weeklyInsight.v1": { "2026-09-14": { "weekStart": "2026-09-14", "reply": "本周不错", "generatedAt": 1791 } },
+  "recipe.prefs.v1": { "cupMl": 300, "theme": "system" },
+  "recipe.apikeys.v1": { "deepseekKey": "sk-legacy" },
+  "recipe.takeoutUndo.v1": { "reason": "删除商家", "at": 1790, "dishes": [] },
+  "recipe.iosInstallHintDismissed.v1": true,
+  "recipe.updateBannerDismissed.v1": true,
+  "recipe.dietLog.v1": []
+}

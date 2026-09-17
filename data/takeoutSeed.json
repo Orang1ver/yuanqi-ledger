@@ -1,0 +1,110 @@
+[
+  {
+    "id": "seed-1",
+    "restaurant": "沙县小吃",
+    "name": "拌面+扁肉套餐",
+    "category": "粉面米线",
+    "priceRange": "¥12-18",
+    "flavorTags": ["咸鲜", "清淡"],
+    "avoidConflicts": []
+  },
+  {
+    "id": "seed-2",
+    "restaurant": "沙县小吃",
+    "name": "蒸饺",
+    "category": "小吃点心",
+    "priceRange": "¥8-12",
+    "flavorTags": ["咸鲜"],
+    "avoidConflicts": []
+  },
+  {
+    "id": "seed-3",
+    "restaurant": "兰州牛肉面",
+    "name": "牛肉拉面（小碗）",
+    "category": "粉面米线",
+    "priceRange": "¥15-22",
+    "flavorTags": ["咸鲜", "微辣"],
+    "avoidConflicts": []
+  },
+  {
+    "id": "seed-4",
+    "restaurant": "麻辣烫",
+    "name": "番茄锅底麻辣烫",
+    "category": "麻辣烫·香锅",
+    "priceRange": "¥20-32",
+    "flavorTags": ["咸鲜", "微辣"],
+    "avoidConflicts": ["不吃辣", "素食"]
+  },
+  {
+    "id": "seed-5",
+    "restaurant": "黄焖鸡米饭",
+    "name": "黄焖鸡米饭（微辣）",
+    "category": "盖饭拌饭",
+    "priceRange": "¥18-26",
+    "flavorTags": ["咸鲜", "微辣"],
+    "avoidConflicts": ["不吃辣"]
+  },
+  {
+    "id": "seed-6",
+    "restaurant": "肯德基",
+    "name": "香辣鸡腿堡",
+    "category": "西式快餐",
+    "priceRange": "¥18-24",
+    "flavorTags": ["咸鲜", "微辣"],
+    "avoidConflicts": ["不吃辣", "无麸质", "素食"]
+  },
+  {
+    "id": "seed-7",
+    "restaurant": "肯德基",
+    "name": "甜玉米棒",
+    "category": "小吃点心",
+    "priceRange": "¥8-12",
+    "flavorTags": ["甜口", "清淡"],
+    "avoidConflicts": []
+  },
+  {
+    "id": "seed-8",
+    "restaurant": "真功夫",
+    "name": "蒸蛋盖饭",
+    "category": "盖饭拌饭",
+    "priceRange": "¥20-28",
+    "flavorTags": ["清淡", "咸鲜"],
+    "avoidConflicts": []
+  },
+  {
+    "id": "seed-9",
+    "restaurant": "蜜雪冰城",
+    "name": "珍珠奶茶（三分糖）",
+    "category": "饮品奶茶",
+    "priceRange": "¥8-12",
+    "flavorTags": ["甜口"],
+    "avoidConflicts": []
+  },
+  {
+    "id": "seed-10",
+    "restaurant": "杨铭宇黄焖鸡",
+    "name": "番茄鸡蛋米线",
+    "category": "粉面米线",
+    "priceRange": "¥18-24",
+    "flavorTags": ["酸辣", "咸鲜"],
+    "avoidConflicts": []
+  },
+  {
+    "id": "seed-11",
+    "restaurant": "家常小炒",
+    "name": "清炒时蔬",
+    "category": "小炒热菜",
+    "priceRange": "¥12-18",
+    "flavorTags": ["清淡", "少油"],
+    "avoidConflicts": []
+  },
+  {
+    "id": "seed-12",
+    "restaurant": "家常小炒",
+    "name": "番茄炒蛋",
+    "category": "小炒热菜",
+    "priceRange": "¥14-20",
+    "flavorTags": ["甜口", "咸鲜"],
+    "avoidConflicts": []
+  }
+]

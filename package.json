@@ -1,0 +1,36 @@
+{
+  "name": "yuanqi-ledger",
+  "version": "0.1.0",
+  "private": true,
+  "description": "元气账本 —— 记录吃、喝、动、睡的个人健康账本",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "check:data": "node scripts/run-continuity.mjs",
+    "preview": "node scripts/preview.mjs",
+    "smoke": "node scripts/browser-smoke.mjs",
+    "demo:data": "node scripts/make-demo-backup.mjs"
+  },
+  "dependencies": {
+    "canvas-confetti": "^1.9.4",
+    "motion": "^13.2.0",
+    "next": "16.2.9",
+    "openai": "^6.7.0",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "uuid": "^13.0.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/canvas-confetti": "^1.9.0",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.9",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}
