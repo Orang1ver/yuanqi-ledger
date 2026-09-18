@@ -12,19 +12,24 @@
  *    当成事实写进用户的账本。这里把依据摊开，用户扫一眼就知道对不对。
  * 2. **估算项显式标注。** 没写份量时按分类兜底，界面上会写「估算」——
  *    不标的话，用户会以为 50g 是查出来的。
- * 3. **库里没匹配到的行不静默丢弃**，而是让用户从相近项里挑一个。丢掉的话，
- *    用户以为记上了，实际少了一条。
+ * 3. **库里没匹配到的行不静默丢弃**，而且要说清**是哪一种没匹配上**：
+ *    不需要记（水）／说得太笼统（一顿饭）／库里真没有，三件事的出路完全不同，
+ *    糊成一句「未匹配」用户只能自己猜。
+ * 4. **先选餐次再记。** 餐次以前是从当前时间推的，补录时几乎必错 ——
+ *    半夜补记中午那顿会被算成「加餐」，而当天的三餐结构正是这个页面要说的事。
  */
 
 import { useState } from "react";
 import { emitDataChanged } from "@/lib/bus";
-import { nowHM } from "@/lib/date";
+import { mealSlotFromTime, nowHM } from "@/lib/date";
 import { fallbackGrams, nutritionOf } from "@/lib/nutrition/core";
 import { foodById } from "@/lib/nutrition/library";
 import { defaultPortionOptions, resolveText } from "@/lib/nutrition/quickadd";
-import type { QuickCandidate } from "@/lib/nutrition/quickadd";
+import type { MissingReason, QuickCandidate } from "@/lib/nutrition/quickadd";
 import { categoryLabel } from "@/lib/nutrition/types";
 import type { FoodItem } from "@/lib/nutrition/types";
+import { MEAL_SLOTS } from "@/lib/tags";
+import type { MealSlot } from "@/lib/tags";
 import { frequentFoods, recordDietEntry } from "@/lib/storage";
 import { FoodSearchDialog } from "./FoodSearchDialog";
 import type { PortionValue } from "./PortionPicker";
@@ -36,6 +41,14 @@ type Row = {
   gramsText: string;
   unitLabel: string;
   removed: boolean;
+};
+
+/** 没匹配上的行挂什么标签。四种原因对应四种出路，标签就该不一样 */
+const MISSING_BADGE: Record<MissingReason, { text: string; cls: string }> = {
+  "no-name": { text: "缺个名字", cls: "yq-badge-info" },
+  meal: { text: "要具体点", cls: "yq-badge-info" },
+  "no-calorie": { text: "不必记账", cls: "yq-badge-primary" },
+  "not-found": { text: "库里没有", cls: "yq-badge-accent" },
 };
 
 function toRows(candidates: QuickCandidate[]): Row[] {
@@ -53,13 +66,37 @@ function gramsOf(r: Row): number {
   return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
+/**
+ * 原句里被剥掉的那一截（「晚上吃了」）。
+ * 摆出来是为了让用户看得见机器做了什么 —— 只说「解析成功」是没法验证的。
+ */
+function strippedPrefix(raw: string, cleaned: string): string {
+  if (raw.length <= cleaned.length || !raw.endsWith(cleaned)) return "";
+  return raw.slice(0, raw.length - cleaned.length);
+}
+
+/**
+ * 当前克数折回「几个 / 几包」。
+ * ⚠️ 由当前克数**反算**，不是把解析时的数量原样写上 —— 用户改了克数，
+ * 这个数要跟着变，否则屏幕上会同时出现「300 克」和「1 个」这种自相矛盾。
+ */
+function portionCount(r: Row): string | null {
+  const per = r.c.amount > 0 ? r.c.grams / r.c.amount : 0;
+  if (!(per > 0) || r.unitLabel === "克" || r.unitLabel === "份") return null;
+  const n = gramsOf(r) / per;
+  if (!(n > 0)) return null;
+  return `≈ ${Number.isInteger(n) ? n : Math.round(n * 10) / 10} ${r.unitLabel}`;
+}
+
 const EXAMPLE = "晚上吃了一包薯片，一杯奶茶";
 
 export function QuickAddCard({ date }: { date: string }) {
   const [text, setText] = useState("");
   const [rows, setRows] = useState<Row[] | null>(null);
   const [msg, setMsg] = useState("");
-  const [picker, setPicker] = useState<{ food?: FoodItem } | null>(null);
+  const [picker, setPicker] = useState<{ food?: FoodItem; query?: string } | null>(null);
+  /** 记到哪一餐。默认按现在的钟点猜，用户随时可以改 —— 补录时这个默认值基本是错的 */
+  const [slot, setSlot] = useState<MealSlot>(() => mealSlotFromTime(nowHM()));
 
   const frequent = frequentFoods(6)
     .map((f) => foodById(f.foodId))
@@ -99,6 +136,7 @@ export function QuickAddCard({ date }: { date: string }) {
       recordDietEntry({
         date,
         time,
+        mealSlot: slot,
         food: r.food,
         name: (r.food as FoodItem).name,
         amount: r.c.amount,
@@ -108,7 +146,7 @@ export function QuickAddCard({ date }: { date: string }) {
       });
     }
     emitDataChanged();
-    setMsg(`已记下 ${ready.length} 条`);
+    setMsg(`已记下 ${ready.length} 条 → ${slot}`);
     setRows(null);
     setText("");
   }
@@ -118,6 +156,7 @@ export function QuickAddCard({ date }: { date: string }) {
     recordDietEntry({
       date,
       time: nowHM(),
+      mealSlot: slot,
       food,
       name: food.name,
       amount: 1,
@@ -127,7 +166,7 @@ export function QuickAddCard({ date }: { date: string }) {
     });
     emitDataChanged();
     setPicker(null);
-    setMsg(`已记下「${food.name}」`);
+    setMsg(`已记下「${food.name}」→ ${slot}`);
   }
 
   return (
@@ -137,6 +176,27 @@ export function QuickAddCard({ date }: { date: string }) {
         <button className="yq-btn yq-btn-sm" onClick={() => setPicker({})}>
           搜索添加
         </button>
+      </div>
+
+      {/* 先定这是哪一餐：页面下面就是按三餐摆的，记错餐次会让整个结构对不上 */}
+      <div
+        role="group"
+        aria-label="记到哪一餐"
+        style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 8 }}
+      >
+        <span className="yq-label" style={{ marginBottom: 0 }}>记到</span>
+        {MEAL_SLOTS.map((s) => (
+          <button
+            key={s}
+            className="yq-chip"
+            data-on={slot === s}
+            aria-pressed={slot === s}
+            onClick={() => setSlot(s)}
+          >
+            {s}
+          </button>
+        ))}
+        <span className="yq-hint">默认按现在的时间猜，可以改</span>
       </div>
 
       <textarea
@@ -177,78 +237,98 @@ export function QuickAddCard({ date }: { date: string }) {
             解析结果（数字对不上就改克数）
           </p>
 
-          {rows.map((r, i) => (
-            <div
-              key={`${r.c.raw}-${i}`}
-              style={{
-                borderTop: "1px solid var(--yq-line)",
-                padding: "10px 0",
-                opacity: r.removed ? 0.45 : 1,
-              }}
-            >
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
-                <b style={{ fontSize: 14, color: "var(--yq-ink)" }}>
-                  {r.food ? r.food.name : `未匹配：「${r.c.name}」`}
-                </b>
-                <button
-                  className="yq-btn yq-btn-sm yq-btn-ghost"
-                  onClick={() => update(i, { removed: !r.removed })}
-                >
-                  {r.removed ? "恢复" : "移除"}
-                </button>
-              </div>
+          {rows.map((r, i) => {
+            const prefix = strippedPrefix(r.c.raw, r.c.cleaned);
+            const count = r.food ? portionCount(r) : null;
+            const badge = r.c.reason ? MISSING_BADGE[r.c.reason] : null;
+            return (
+              <div
+                key={`${r.c.raw}-${i}`}
+                style={{
+                  borderTop: "1px solid var(--yq-line)",
+                  padding: "10px 0",
+                  opacity: r.removed ? 0.45 : 1,
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
+                  <span style={{ display: "flex", alignItems: "baseline", gap: 6, minWidth: 0 }}>
+                    <b style={{ fontSize: 14, color: "var(--yq-ink)" }}>
+                      {r.food ? r.food.name : `「${r.c.name || r.c.raw}」`}
+                    </b>
+                    {badge && <span className={`yq-badge ${badge.cls}`}>{badge.text}</span>}
+                  </span>
+                  <button
+                    className="yq-btn yq-btn-sm yq-btn-ghost"
+                    onClick={() => update(i, { removed: !r.removed })}
+                  >
+                    {r.removed ? "恢复" : "移除"}
+                  </button>
+                </div>
 
-              <p className="yq-hint" style={{ marginTop: 2 }}>
-                {r.c.raw !== r.c.cleaned ? `「${r.c.raw}」→「${r.c.cleaned}」· ` : ""}
-                {r.c.basis}
-                {r.c.estimated && r.food ? " ⚠ 估算" : ""}
-              </p>
-
-              {r.food ? (
-                <>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
-                    <input
-                      className="yq-input"
-                      type="number"
-                      inputMode="decimal"
-                      value={r.gramsText}
-                      onChange={(e) => update(i, { gramsText: e.target.value })}
-                      style={{ maxWidth: 96, minHeight: 36, fontSize: 14 }}
-                    />
-                    <span className="yq-hint">
-                      {r.unitLabel} ·{" "}
-                      {gramsOf(r) > 0
-                        ? `${Math.round(nutritionOf(r.food, gramsOf(r)).kcal)} kcal`
-                        : "填个克数"}
-                    </span>
-                  </div>
-                  <p className="yq-hint" style={{ marginTop: 2 }}>
-                    {categoryLabel(r.food.category)} · 数值来源：{r.food.source}
-                  </p>
-                </>
-              ) : (
-                <>
-                  <p className="yq-hint" style={{ marginTop: 4 }}>
-                    库里没有这一条。从下面挑一个，或者用「搜索添加」自己找：
-                  </p>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
-                    {r.c.alternatives.length === 0 && (
-                      <span className="yq-hint">没有相近的条目</span>
+                {r.food ? (
+                  <>
+                    <p className="yq-hint" style={{ marginTop: 2 }}>
+                      {prefix ? `剥掉「${prefix}」· ` : ""}
+                      {r.c.basis}
+                      {r.c.estimated ? " ⚠ 估算" : ""}
+                    </p>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6, flexWrap: "wrap" }}>
+                      <input
+                        className="yq-input"
+                        type="number"
+                        inputMode="decimal"
+                        value={r.gramsText}
+                        onChange={(e) => update(i, { gramsText: e.target.value })}
+                        style={{ maxWidth: 96, minHeight: 36, fontSize: 14 }}
+                      />
+                      {/* ⚠️ 这个框里装的是**克数**，单位就只能写「克」。
+                          以前这里写的是 unitLabel（「份」「包」），于是「吃了个苹果」
+                          在界面上显示成「200 份」—— 数字是对的，读出来是另一个意思。 */}
+                      <span className="yq-hint">
+                        克{count ? ` ${count}` : ""} ·{" "}
+                        {gramsOf(r) > 0
+                          ? `${Math.round(nutritionOf(r.food, gramsOf(r)).kcal)} kcal`
+                          : "填个克数"}
+                      </span>
+                    </div>
+                    <p className="yq-hint" style={{ marginTop: 2 }}>
+                      {categoryLabel(r.food.category)} · 数值来源：{r.food.source}
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="yq-hint" style={{ marginTop: 4 }}>
+                      {r.c.explain}
+                    </p>
+                    {r.c.alternatives.length > 0 && (
+                      <>
+                        <p className="yq-hint" style={{ marginTop: 6 }}>相近的：</p>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                          {r.c.alternatives.map((f) => (
+                            <button key={f.id} className="yq-chip" onClick={() => adopt(i, f)}>
+                              {f.name}
+                            </button>
+                          ))}
+                        </div>
+                      </>
                     )}
-                    {r.c.alternatives.map((f) => (
-                      <button key={f.id} className="yq-chip" onClick={() => adopt(i, f)}>
-                        {f.name}
+                    <div style={{ marginTop: 8 }}>
+                      <button
+                        className="yq-btn yq-btn-sm yq-btn-ghost"
+                        onClick={() => setPicker({ query: r.c.name || r.c.cleaned })}
+                      >
+                        自己搜一个
                       </button>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-          ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })}
 
           <div style={{ display: "flex", gap: 8, marginTop: 12, alignItems: "center", flexWrap: "wrap" }}>
             <button className="yq-btn yq-btn-sm yq-btn-primary" onClick={saveAll} disabled={!ready.length}>
-              记下这 {ready.length} 条
+              记到{slot}· {ready.length} 条
             </button>
             <span className="yq-hint">合计约 {Math.round(previewKcal)} kcal</span>
             <button className="yq-btn yq-btn-sm yq-btn-ghost" onClick={() => setRows(null)}>
@@ -267,6 +347,7 @@ export function QuickAddCard({ date }: { date: string }) {
       {picker && (
         <FoodSearchDialog
           initialFood={picker.food}
+          initialQuery={picker.query}
           onClose={() => setPicker(null)}
           onAdd={addOne}
         />

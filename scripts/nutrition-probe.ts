@@ -83,7 +83,7 @@ if (wantJson) {
           grams: c.grams || null,
           basis: c.basis,
           estimated: c.estimated,
-          failed: c.missing ? `库里没有匹配到「${c.name}」` : null,
+          failed: c.missing ? { reason: c.reason ?? "not-found", explain: c.explain ?? "" } : null,
         })),
         totals: roundValues(totals.values),
         coverage: { sodium: totals.sodiumCoverage, fiber: totals.fiberCoverage },
@@ -110,8 +110,8 @@ console.log(line);
 
 for (const { c, entry } of items) {
   if (!entry) {
-    console.log(`\n✗ 「${c.raw}」`);
-    console.log(`    ${c.basis}，未计入合计`);
+    console.log(`\n✗ 「${c.raw}」  [${c.reason ?? "not-found"}]`);
+    console.log(`    ${c.explain ?? `库里没有匹配到「${c.name}」`}，未计入合计`);
     continue;
   }
   const n = entry.nutrition;

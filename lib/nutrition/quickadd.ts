@@ -36,11 +36,70 @@ export type QuickCandidate = {
   food?: FoodItem;
   /** 库里没有匹配到，要请用户自己选一个 */
   missing: boolean;
+  /** 没匹配上时**是哪种没匹配上** —— 界面据此说不同的话、给不同的出路 */
+  reason?: MissingReason;
+  /** 给用户看的一句解释（只在 missing 时给）。说清"为什么不记账"或"要怎么补" */
+  explain?: string;
   /** 命中或相近的食物，界面用来让用户改选。第一项是当前选中的 */
   alternatives: FoodItem[];
   /** 命中的份量规则，界面可以据此列出「小包 / 一包 / 大包」让用户改 */
   rule?: PortionRule;
 };
+
+/**
+ * 没匹配上的四种原因。
+ *
+ * 分开的理由：「未匹配：矿泉水」和「未匹配：顿饭」对用户来说是完全不同的两件事 ——
+ * 前者是**不需要记**，后者是**说得太笼统**，只有第三种才是"库里真没有"。
+ * 都糊成一句「未匹配」，用户只能自己猜，而他猜不出来的正是这个地方。
+ */
+export type MissingReason =
+  /** 只有份量，没说吃什么（「一包」「半杯」） */
+  | "no-name"
+  /** 是整餐/整单的说法（「顿饭」「正餐」「外卖」），不是某一样食物 */
+  | "meal"
+  /** 水、茶、黑咖啡这类，记了也几乎不改变任何结论 */
+  | "no-calorie"
+  /** 库里确实没有这一条 */
+  | "not-found";
+
+/**
+ * 整餐的说法。**必须整名匹配**，否则「午饭吃了红烧肉」会被当成"只说了餐次"。
+ */
+const MEAL_PHRASE_RE = /^(一|两|几|半)?(顿|餐)?(饭|正餐|大餐|早饭|早餐|午饭|午餐|晚饭|晚餐|宵夜|夜宵|早点|加餐|外卖|家常菜)$/;
+
+/**
+ * 记了也几乎不改变结论的东西。
+ *
+ * ⚠️ **只能整名精确匹配，绝不能用子串** ——「茶」是「奶茶」的子串、
+ * 「水」是「水煮肉片」的子串，子串匹配会让"不必记账"这句话说错对象。
+ *
+ * 这些不写进食物库，是因为账本算的是营养素，而它们的贡献约等于 0；
+ * 喝水量本来就在首页有独立的打卡（那是"喝够没有"的问题，不是"热量多少"的问题）。
+ */
+const NO_CALORIE_NAMES = new Set([
+  "水", "白开水", "开水", "热水", "温水", "凉白开", "凉开水", "冰水", "凉水",
+  "矿泉水", "纯净水", "饮用水", "瓶装水", "茶水",
+  "茶", "绿茶", "红茶", "乌龙茶", "普洱茶", "花茶", "黑咖啡", "美式", "美式咖啡", "气泡水", "苏打水",
+]);
+
+function missingReason(name: string): MissingReason {
+  if (NO_CALORIE_NAMES.has(name)) return "no-calorie";
+  if (MEAL_PHRASE_RE.test(name)) return "meal";
+  return "not-found";
+}
+
+/** 把「为什么没记上」说成人话。界面原样展示，所以措辞要能直接给用户看 */
+function missingExplain(name: string, reason: MissingReason): string {
+  switch (reason) {
+    case "meal":
+      return `「${name}」是整餐的说法，账本要落到具体吃了什么才估得出热量 —— 下面挑一样，或者分开记几条。`;
+    case "no-calorie":
+      return `水和清茶这类几乎没有热量，记进来不会改变任何结论。想记喝了多少水，用首页的「喝水」打卡更合适。`;
+    default:
+      return `库里没有「${name}」。从下面挑一个相近的，或者用「搜索添加」自己找。`;
+  }
+}
 
 /**
  * 找食物：先精确名再模糊 — 精确优先，免得「奶茶」被「奶茶（无糖）」抢走。
@@ -78,15 +137,18 @@ function resolveOne(fragment: string, altLimit: number): QuickCandidate {
   // 只有份量没说是吃什么（「一包」「半杯」）—— 不能拿残留的量词去模糊匹配
   if (!parsed.name) {
     c.missing = true;
-    c.basis = `「${fragment}」里只有份量、没说是吃什么 —— 补上食物名就能算`;
+    c.reason = "no-name";
+    c.explain = `「${fragment}」里只有份量、没说是吃什么 —— 补上食物名就能算`;
     return c;
   }
 
   const food = matchFood(parsed.name);
   if (!food) {
     c.missing = true;
-    c.basis = `库里没有匹配到「${parsed.name}」`;
-    // 仍然给几个相近的让用户挑，别让他从零搜
+    c.reason = missingReason(parsed.name);
+    c.explain = missingExplain(parsed.name, c.reason);
+    // 仍然给几个相近的让用户挑，别让他从零搜。
+    // 整餐的说法也给：说「吃了顿饭」的人多半要的是主食，摆个「米饭」出来比让他自己搜强。
     c.alternatives = searchFoods(parsed.name, altLimit);
     return c;
   }

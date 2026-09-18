@@ -10,6 +10,7 @@
  */
 
 import { calcCalorieTarget } from "../health";
+import type { MealSlot } from "../tags";
 import type { HealthProfile } from "../types";
 import type { NutritionTargets } from "./types";
 
@@ -84,3 +85,29 @@ export function describeTargets(t: NutritionTargets, p: HealthProfile): string {
     "这些是公式估算值，个体差异可达 ±15%。用两三周的实际体重变化反推会更准。",
   ].join("\n");
 }
+
+// ---------- 三餐的参考分配 ----------
+
+/**
+ * 一天的热量落在三餐上的常见比例。
+ *
+ * ⚠️ 这是**参考**，不是标准：真正吃多少取决于作息、活动量和习惯（有人不吃早饭、
+ * 有人晚饭才是主餐）。所以界面上必须写「参考」，并且**不用它判定对错** ——
+ * 把 25/40/35 当成标准去指责用户，是一种没有根据的指责。
+ *
+ * 「加餐」刻意不占份额：它本来就是正餐之外补的，给它派一个目标等于鼓励多吃。
+ */
+const MEAL_KCAL_SHARE: { slot: MealSlot; share: number }[] = [
+  { slot: "早餐", share: 0.25 },
+  { slot: "午餐", share: 0.4 },
+  { slot: "晚餐", share: 0.35 },
+];
+
+/** 某一餐的参考热量上限。加餐没有份额，返回 null（界面据此不画比例） */
+export function mealKcalTarget(totalKcal: number, slot: MealSlot): number | null {
+  const hit = MEAL_KCAL_SHARE.find((m) => m.slot === slot);
+  return hit ? Math.round(totalKcal * hit.share) : null;
+}
+
+/** 放在三餐板块里的那句话。写清楚它只是参考，省得用户以为自己吃错了 */
+export const MEAL_SPLIT_NOTE = "三餐按早 25% / 午 40% / 晚 35% 折算，只是个参考分配。";

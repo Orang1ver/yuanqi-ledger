@@ -6,14 +6,14 @@
     "note": "自建库。数值是事实性数据，编排与口径由本项目自行整理。每条必须标 source：查不到就说查不到，不要拿通用值硬凑。sodium/fiber 缺省表示暂无数据，与 0 不等价。"
   },
   "items": [
-    { "id": "rice-cooked", "name": "米饭", "alias": ["白米饭", "蒸米饭", "大米饭"], "category": "staple", "unit": "g", "kcal": 116, "protein": 2.6, "fat": 0.3, "carb": 25.9, "sodium": 2.5, "fiber": 0.3, "source": "通用成分值（蒸熟）" },
+    { "id": "rice-cooked", "name": "米饭", "alias": ["白米饭", "蒸米饭", "大米饭", "饭", "白饭"], "category": "staple", "unit": "g", "kcal": 116, "protein": 2.6, "fat": 0.3, "carb": 25.9, "sodium": 2.5, "fiber": 0.3, "source": "通用成分值（蒸熟）" },
     { "id": "rice-brown-cooked", "name": "糙米饭", "alias": ["杂粮饭"], "category": "staple", "unit": "g", "kcal": 112, "protein": 2.7, "fat": 1.0, "carb": 23.0, "sodium": 3, "fiber": 1.6, "source": "通用成分值（蒸熟）" },
     { "id": "congee-white", "name": "白粥", "alias": ["稀饭", "大米粥"], "category": "staple", "unit": "g", "kcal": 46, "protein": 1.1, "fat": 0.3, "carb": 9.9, "sodium": 2, "fiber": 0.1, "source": "通用成分值（煮）" },
     { "id": "congee-millet", "name": "小米粥", "alias": ["小米稀饭"], "category": "staple", "unit": "g", "kcal": 46, "protein": 1.4, "fat": 0.7, "carb": 8.4, "sodium": 3, "fiber": 0.3, "source": "通用成分值（煮）" },
     { "id": "mantou", "name": "馒头", "alias": ["馍", "白馒头"], "category": "staple", "unit": "g", "kcal": 223, "protein": 7.0, "fat": 1.1, "carb": 47.0, "sodium": 165, "fiber": 1.3, "source": "通用成分值" },
     { "id": "huajuan", "name": "花卷", "category": "staple", "unit": "g", "kcal": 214, "protein": 6.4, "fat": 1.0, "carb": 45.6, "sodium": 180, "source": "通用成分值" },
     { "id": "noodles-dry", "name": "挂面", "alias": ["干面条", "面条（干）"], "category": "staple", "unit": "g", "kcal": 346, "protein": 10.5, "fat": 0.9, "carb": 74.1, "sodium": 170, "fiber": 0.9, "source": "通用成分值（干重）" },
-    { "id": "noodles-cooked", "name": "面条", "alias": ["煮面", "清汤面", "面条（煮）"], "category": "staple", "unit": "g", "kcal": 110, "protein": 2.7, "fat": 0.2, "carb": 24.3, "sodium": 120, "source": "通用成分值（煮熟）" },
+    { "id": "noodles-cooked", "name": "面条", "alias": ["煮面", "清汤面", "面条（煮）", "面"], "category": "staple", "unit": "g", "kcal": 110, "protein": 2.7, "fat": 0.2, "carb": 24.3, "sodium": 120, "source": "通用成分值（煮熟）" },
     { "id": "rice-noodle-cooked", "name": "米线", "alias": ["米粉（熟）", "过桥米线"], "category": "staple", "unit": "g", "kcal": 100, "protein": 1.6, "fat": 0.2, "carb": 23.5, "sodium": 120, "source": "通用成分值（煮熟）" },
     { "id": "vermicelli-dry", "name": "粉丝（干）", "alias": ["粉条", "红薯粉丝"], "category": "staple", "unit": "g", "kcal": 338, "protein": 0.8, "fat": 0.2, "carb": 83.7, "sodium": 10, "source": "通用成分值（干重）" },
     { "id": "toast-white", "name": "白吐司", "alias": ["面包片", "切片面包", "吐司"], "category": "staple", "unit": "g", "kcal": 312, "protein": 8.3, "fat": 5.1, "carb": 58.6, "sodium": 230, "fiber": 2.5, "source": "通用成分值" },

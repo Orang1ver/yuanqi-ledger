@@ -18,16 +18,19 @@ export function FoodSearchDialog({
   onClose,
   onAdd,
   initialFood,
+  initialQuery,
   ctaLabel = "记下这一份",
 }: {
   onClose: () => void;
   onAdd: (food: FoodItem, portion: PortionValue) => void;
   /** 已指定食物时直接进入定份量那一步（「最近常吃」点进来就是这条路） */
   initialFood?: FoodItem;
+  /** 预填搜索词。库里没匹配到的行点「自己搜一个」进来时，别让用户再打一遍 */
+  initialQuery?: string;
   /** 按钮文案。菜单库拿它来「关联到这道菜」，动作不同、步骤一样 */
   ctaLabel?: string;
 }) {
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(initialQuery ?? "");
   const [picked, setPicked] = useState<FoodItem | null>(initialFood ?? null);
   const [portion, setPortion] = useState<PortionValue>(() => {
     const first = initialFood ? defaultPortionOptions(initialFood)[0] : undefined;

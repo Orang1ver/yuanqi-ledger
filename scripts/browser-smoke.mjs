@@ -283,6 +283,134 @@ async function checkRingAnimates(page, baseUrl, failures) {
   }
 }
 
+// ---------- 餐次是不是真的能指定 ----------
+
+/**
+ * 「记到某一餐」要真的落到那一餐里，而不是靠时间凑巧猜对。
+ *
+ * 为什么非得过一遍真实 DOM：餐次要穿过
+ * QuickAddCard 的 state → `recordDietEntry` → localStorage → 读取时的兜底
+ * （`mealSlot ?? mealSlotFromTime(time)`）→ 分组渲染 ——
+ * 中间任何一环把 slot 丢了，最后都表现成「记到别的餐去了」，
+ * 而单测可以全绿（单测直接调 `recordDietEntry`，不经过界面那一层）。
+ *
+ * ⚠️ **不能写死「记到午餐」**：`recordDietEntry` 有按时间兜底的逻辑，
+ * 而冒烟可能在中午跑 —— 那时兜底恰好也得出「午餐」，检查会变成一句空话
+ * （实测：把 `mealSlot: slot` 改成 `undefined` 之后这个检查依然全绿）。
+ * 所以这里**先读默认选中项（那就是按时间猜的那个）**，再刻意选一个**别的**餐次，
+ * 这样只要餐次没跟着走，记录就会落在默认那一组里，计数对比立刻能看出来。
+ *
+ * ⚠️ **也不许假设样例数据里没有鸡蛋**：改成前后**计数对比**，
+ * 无论本来有没有同类记录结论都成立（同 checkRingAnimates 先造前置条件的思路）。
+ *
+ * 定位用 role + aria-label（读屏本来就要用的东西），不碰 class 名。
+ */
+async function checkMealSlot(page, baseUrl, failures) {
+  await goto(page, `${baseUrl}/diet/?meal=${Date.now()}`);
+
+  const r = await evaluate(
+    page,
+    `(async () => {
+      const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+      const box = (slot) => document.querySelector('[role="group"][aria-label="' + slot + '的记录"]');
+      const food = "鸡蛋";
+      const countIn = (slot) => { const b = box(slot); return b ? (b.innerText.match(new RegExp(food, "g")) || []).length : -1; };
+      const chips = () => {
+        const g = document.querySelector('[role="group"][aria-label="记到哪一餐"]');
+        return g ? [...g.querySelectorAll("button")] : [];
+      };
+
+      const group = document.querySelector('[role="group"][aria-label="记到哪一餐"]');
+      if (!group) return { ok: false, why: "找不到餐次选择（aria-label=记到哪一餐）" };
+
+      // 默认选中的那个就是「按当前时间猜」的结果 —— 我们要刻意避开它
+      const all = chips();
+      const picked = all.find((b) => b.getAttribute("aria-pressed") === "true");
+      if (!picked) return { ok: false, why: "四个餐次里没有默认选中项 —— 默认值没生效" };
+      const guess = picked.innerText.trim();
+      const target = all.map((b) => b.innerText.trim()).find((s) => s && s !== guess);
+      if (!target) return { ok: false, why: "找不到一个和默认不同的餐次可选" };
+
+      const targetBox = box(target);
+      if (!targetBox) return { ok: false, why: "找不到「" + target + "」那一组" };
+      const before = { [target]: countIn(target), [guess]: countIn(guess) };
+
+      const chip = all.find((b) => b.innerText.trim() === target);
+      chip.click();
+      await sleep(60);
+      if (chip.getAttribute("aria-pressed") !== "true" || picked.getAttribute("aria-pressed") !== "false") {
+        return { ok: false, why: "点了「" + target + "」但选中态没有转移过去", guess, target, before };
+      }
+
+      const ta = document.querySelector("textarea");
+      if (!ta) return { ok: false, why: "找不到「记一笔」的输入框", guess, target, before };
+      // React 的受控输入框：直接改 .value 不会触发 onChange，要用原型上的 setter + input 事件
+      const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value").set;
+      setter.call(ta, "两个鸡蛋");
+      ta.dispatchEvent(new Event("input", { bubbles: true }));
+      await sleep(60);
+
+      const parseBtn = [...document.querySelectorAll("button")].find((b) => b.innerText.includes("看看算成什么"));
+      if (!parseBtn || parseBtn.disabled) return { ok: false, why: "「看看算成什么」按钮不可用", guess, target, before };
+      parseBtn.click();
+      await sleep(350);
+
+      const saveBtn = [...document.querySelectorAll("button")].find((b) => b.innerText.includes("记到" + target));
+      if (!saveBtn) return { ok: false, why: "解析之后没出现写着「记到" + target + "」的保存按钮", guess, target, before };
+      const label = saveBtn.innerText;
+      if (saveBtn.disabled) return { ok: false, why: "「记到" + target + "」是禁用的（没解析出可记的条目）", guess, target, before, label };
+      saveBtn.click();
+      await sleep(350);
+
+      return { ok: true, guess, target, label, before, after: { [target]: countIn(target), [guess]: countIn(guess) } };
+    })()`,
+  );
+
+  if (!r.ok) {
+    failures.push(`餐次检查：${r.why}`);
+    console.log(`✗ 餐次检查没跑成：${r.why}`);
+    return;
+  }
+
+  // 再刷一次，确认是**存下来了**而不是只活在内存里
+  await goto(page, `${baseUrl}/diet/?meal2=${Date.now()}`);
+  const after = await evaluate(
+    page,
+    `(() => {
+      const count = (slot) => {
+        const b = document.querySelector('[role="group"][aria-label="' + slot + '的记录"]');
+        return b ? (b.innerText.match(/鸡蛋/g) || []).length : -1;
+      };
+      return { [${JSON.stringify(r.target)}]: count(${JSON.stringify(r.target)}), [${JSON.stringify(r.guess)}]: count(${JSON.stringify(r.guess)}) };
+    })()`,
+  );
+
+  const t0 = r.before[r.target];
+  const t1 = r.after[r.target];
+  const t2 = after[r.target];
+  const g0 = r.before[r.guess];
+  const g2 = after[r.guess];
+  const ok = t1 === t0 + 1 && t2 === t0 + 1 && g2 === g0;
+
+  console.log(
+    `${ok ? "✓" : "✗"} 记到「${r.target}」就落在「${r.target}」（默认按时间猜的是「${r.guess}」，按钮「${r.label}」；` +
+      `${r.target} ${t0} → 内存 ${t1} / 刷新后 ${t2}，${r.guess} ${g0} → ${g2}）`,
+  );
+
+  if (t1 !== t0 + 1) {
+    failures.push(
+      `选了「${r.target}」后记下，那一组的条目没有增加（${t0} → ${t1}）—— 餐次没跟着走（多半落到了默认的「${r.guess}」）`,
+    );
+  } else if (t2 !== t0 + 1) {
+    failures.push(`「${r.target}」那一组刷新后条目数对不上（记之前 ${t0}，刷新后 ${t2}）—— 餐次没被持久化`);
+  }
+  if (g2 !== g0) {
+    failures.push(
+      `「${r.guess}」那一组凭空多出了记录（${g0} → ${g2}）—— 餐次落到了别处，说明用户选的餐次被忽略了`,
+    );
+  }
+}
+
 // ---------- 按需拉起预览服务 ----------
 //
 // 冒烟测试依赖一个静态服务把 out/ 挂在子路径下。要求人先手动起服务，
@@ -388,7 +516,8 @@ const EXPECT = [
   },
   {
     path: "/diet/",
-    must: dietNames.length ? dietNames : ["还没有记录"],
+    // 「早中晚餐」是饮食页的主结构，无论有没有数据都必须在
+    must: dietNames.length ? [...dietNames, "早中晚餐"] : ["今天还没记", "早中晚餐"],
     mustNot: ["NaN", "undefined"],
     label: "饮食",
   },
@@ -564,6 +693,9 @@ try {
   // 页面渲染断言跑完再查动画：这一步会真的点一下「＋1 杯」，会写进 localStorage，
   // 放在前面会污染后面那些"数据还在不在"的断言
   await checkRingAnimates(page, BASE_URL, failures);
+
+  // 同理：这一条会真的往账本里记一条鸡蛋，必须放在所有只读断言之后
+  await checkMealSlot(page, BASE_URL, failures);
 
   if (failures.length) {
     console.log(`\n✗ ${failures.length} 个页面没显示出应有的内容（数据来源：${seedLabel}）：`);

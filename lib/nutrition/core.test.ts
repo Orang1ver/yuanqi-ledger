@@ -34,7 +34,8 @@ import {
 import { allFoods, findFoodByName, foodById, portionTable, searchFoods } from "./library";
 import { parseFragment, splitFragments, stripLeadNoise } from "./parse";
 import { matchFood, resolveText } from "./quickadd";
-import { calcNutritionTargets, targetsConflict } from "./targets";
+import { MEAL_SPLIT_NOTE, calcNutritionTargets, mealKcalTarget, targetsConflict } from "./targets";
+import { MEAL_SLOTS } from "../tags";
 import type { DietEntry, FoodItem } from "./types";
 import type { HealthProfile } from "../types";
 
@@ -337,7 +338,8 @@ describe("浅解析", () => {
   it("噪音只剥开头，不动食物名", () => {
     assert.equal(stripLeadNoise("我喝了一杯奶茶"), "一杯奶茶");
     assert.equal(stripLeadNoise("一杯奶茶"), "一杯奶茶");
-    assert.equal(stripLeadNoise("今天下午吃了个苹果"), "苹果");
+    // 只剥动词「吃了」，「个」是量词，必须留着 —— 剥掉它会让份量表白写（见「量词不许被前缀噪音吃掉」）
+    assert.equal(stripLeadNoise("今天下午吃了个苹果"), "个苹果");
   });
 
   it("切段认得中英文逗号、顿号与空白", () => {
@@ -418,7 +420,133 @@ describe("一句话记录 · 兜底不许算错", () => {
     const [c] = resolveText("一包");
     assert.equal(c.missing, true);
     assert.equal(c.food, undefined);
-    assert.match(c.basis, /没说是吃什么/);
+    assert.equal(c.reason, "no-name");
+    assert.match(c.explain ?? "", /没说是吃什么/);
+  });
+});
+
+describe("量词不许被前缀噪音吃掉", () => {
+  /*
+   * 这里曾经有一个「克数碰巧对、单位是错的」的 bug：
+   * `LEAD_NOISE` 里写了「吃了个」，剥噪音时把量词「个」一起剥掉了 ——
+   * 「吃了个苹果」变成「苹果」，解析成"没写份量"，于是按分类兜底 200g 并标成「份」。
+   * 而份量表里明明有 `个[苹果] = 200g`。数值恰好一致，所以**看不出错**，
+   * 只有单位（200 份）和「估算」标签是错的 —— 这类错最难发现。
+   */
+  it("「吃了个苹果」走份量表，不是分类兜底", () => {
+    const [c] = resolveText("吃了个苹果");
+    assert.equal(c.food?.name, "苹果");
+    assert.equal(c.unitLabel, "个");
+    assert.equal(c.grams, 200);
+    assert.equal(c.estimated, false);
+    assert.match(c.basis, /一个/);
+  });
+
+  it("「吃了一个苹果」「两个鸡蛋」的量词都留着", () => {
+    const [a] = resolveText("吃了一个苹果");
+    assert.equal(a.unitLabel, "个");
+    assert.equal(a.grams, 200);
+
+    const [b] = resolveText("两个鸡蛋");
+    assert.equal(b.unitLabel, "个");
+    assert.equal(b.grams, 110); // 2 × 55g
+  });
+
+  it("「喝了杯牛奶」的量词留着（「喝了个」那类噪音不许再吞量词）", () => {
+    const [c] = resolveText("喝了杯牛奶");
+    // 库里有全脂/脱脂两条，「牛奶」落到全脂那条 —— 这里要验的是量词和克数，不是具体哪条
+    assert.match(c.food?.name ?? "", /牛奶/);
+    assert.equal(c.unitLabel, "杯");
+    assert.equal(c.grams, 250);
+    assert.equal(c.estimated, false);
+  });
+
+  it("光杆量词归位成量词，不当成食物名", () => {
+    const p = parseFragment("个");
+    assert.equal(p.unit, "个");
+    assert.equal(p.name, "");
+    assert.equal(resolveText("个")[0].missing, true);
+  });
+
+  it("量词残缺的残渣不再被配成任意食物（「包」不许配成肉包）", () => {
+    assert.equal(matchFood("包"), undefined);
+  });
+});
+
+describe("没匹配上时要说清是哪一种", () => {
+  it("水、清茶这类：明说记了也没意义，而不是「未匹配」", () => {
+    for (const text of ["喝了一瓶矿泉水", "喝了杯水", "喝了杯黑咖啡"]) {
+      const [c] = resolveText(text);
+      assert.equal(c.missing, true, text);
+      assert.equal(c.reason, "no-calorie", text);
+      assert.match(c.explain ?? "", /几乎没有热量/, text);
+    }
+  });
+
+  it("「茶」是子串但不是同一个东西：奶茶、水果茶不许被当成「不必记账」", () => {
+    const [naicha] = resolveText("一杯奶茶");
+    // 库里有「奶茶（全糖）」「奶茶（无糖）」，落到哪条都行 —— 关键是**不能被当成茶**
+    assert.ok(naicha.food, "奶茶必须能匹配到");
+    assert.match(naicha.food!.name, /奶茶/);
+    assert.equal(naicha.reason, undefined);
+    assert.ok(naicha.grams > 0);
+  });
+
+  it("整餐的说法：说明要落到具体食物，别把它当成「库里没有」", () => {
+    for (const text of ["吃了顿饭", "吃了个正餐"]) {
+      const [c] = resolveText(text);
+      assert.equal(c.missing, true, text);
+      assert.equal(c.reason, "meal", text);
+      assert.match(c.explain ?? "", /整餐/, text);
+    }
+  });
+
+  it("「午饭吃了红烧肉」要认成红烧肉 —— 单字别名「饭」不许抢走它", () => {
+    const c = resolveText("午饭吃了红烧肉")[0];
+    assert.notEqual(c.reason, "meal");
+    assert.equal(c.food?.name, "红烧肉");
+  });
+
+  it("库里真没有的，仍然给相近项让用户挑", () => {
+    const [c] = resolveText("吃了个仙人掌果");
+    assert.equal(c.missing, true);
+    assert.equal(c.reason, "not-found");
+    assert.match(c.explain ?? "", /库里没有/);
+  });
+});
+
+describe("常见口语不许因为缺别名就记不上", () => {
+  it("「一碗饭」认成米饭 180g（饭 是 米饭 的别名）", () => {
+    const [c] = resolveText("一碗饭");
+    assert.equal(c.food?.name, "米饭");
+    assert.equal(c.unitLabel, "碗");
+    assert.equal(c.grams, 180);
+    assert.equal(c.missing, false);
+  });
+
+  it("「一碗面」认成面条 250g", () => {
+    const [c] = resolveText("一碗面");
+    assert.equal(c.food?.name, "面条");
+    assert.equal(c.grams, 250);
+  });
+
+  it("加了别名也不许抢走更具体的条目：「蛋炒饭」还是蛋炒饭", () => {
+    assert.equal(matchFood("蛋炒饭")?.name, "蛋炒饭");
+    assert.equal(matchFood("炒饭")?.name, "蛋炒饭");
+  });
+});
+
+describe("三餐的参考分配", () => {
+  it("早中晚三份加起来等于总目标，加餐不占份额", () => {
+    const targets = calcNutritionTargets(PROFILE);
+    const sum = MEAL_SLOTS.reduce((a, s) => a + (mealKcalTarget(targets.kcal, s) ?? 0), 0);
+    // 取整会有 1 kcal 级别的误差，不许超过每餐 1 kcal
+    assert.ok(Math.abs(sum - targets.kcal) <= 2, `三餐合计 ${sum}，总目标 ${targets.kcal}`);
+    assert.equal(mealKcalTarget(targets.kcal, "加餐"), null);
+  });
+
+  it("份额是参考值：措辞里必须带「参考」二字，不能拿去判定对错", () => {
+    assert.match(MEAL_SPLIT_NOTE, /参考/);
   });
 });
 

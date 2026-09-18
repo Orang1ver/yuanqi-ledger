@@ -1,6 +1,6 @@
 {
   "name": "yuanqi-ledger",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "private": true,
   "description": "元气账本 —— 记录吃、喝、动、睡的个人健康账本",
   "scripts": {

@@ -75,6 +75,7 @@ export function findFoodByName(text: string): FoodItem | undefined {
  * 打分而不是简单过滤，是因为中文口语里「草莓酸奶」这种词会同时命中「草莓」和「酸奶」，
  * 而用户想要的往往是那个名字更完整、更具体的。分数由四档构成：
  * 完全等于 > 以查询开头 > 包含查询 > 被查询包含（用户说了更长的句子）。
+ * 最后一档不收单字名字，理由见下面的行内注释。
  */
 export function searchFoods(query: string, limit = 20): FoodItem[] {
   const q = normalize(query);
@@ -88,7 +89,16 @@ export function searchFoods(query: string, limit = 20): FoodItem[] {
       if (nn === q) best = Math.max(best, 100);
       else if (nn.startsWith(q)) best = Math.max(best, 80);
       else if (nn.includes(q)) best = Math.max(best, 60);
-      else if (q.includes(nn)) best = Math.max(best, 40);
+      /*
+       * 「被查询包含」这一档**不收单字**。
+       * 一个单字出现在句子里的任何位置都不说明用户想吃它 ——
+       * 「饭」藏在「午饭吃了红烧肉」里、「面」藏在「面粉」里。
+       * 而且这一档同分时是**名字短者优先**，于是单字别名会稳定地抢走
+       * 本来该给「红烧肉」的位置（实测：加了别名「饭」之后，
+       * 「午饭吃了红烧肉」被记成米饭）。
+       * 单字仍然可以走**精确**匹配（上面那一档）—— 说「饭」就是米饭，说「醋」就是醋。
+       */
+      else if (nn.length >= 2 && q.includes(nn)) best = Math.max(best, 40);
     }
     if (best > 0) scored.push({ food, score: best });
   }

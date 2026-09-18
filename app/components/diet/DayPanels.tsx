@@ -21,10 +21,11 @@ export function DayPanels({ date }: { date: string }) {
 
   return (
     <>
+      {/* 三餐摆在最前：一天吃进去多少是**结果**，三餐各自吃了什么才是能改的那个东西 */}
+      <DietDayList entries={entries} targets={targets} />
       <NutritionOverview totals={totals} targets={targets} targetsFromProfile={targetsFromProfile} />
       <AdviceCard entries={entries} totals={totals} targets={targets} />
       <QualityScoreCard entries={entries} totals={totals} targets={targets} />
-      <DietDayList entries={entries} />
     </>
   );
 }
