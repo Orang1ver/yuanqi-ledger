@@ -33,6 +33,7 @@ import {
 } from "./core";
 import { allFoods, findFoodByName, foodById, portionTable, searchFoods } from "./library";
 import { parseFragment, splitFragments, stripLeadNoise } from "./parse";
+import { matchFood, resolveText } from "./quickadd";
 import { calcNutritionTargets, targetsConflict } from "./targets";
 import type { DietEntry, FoodItem } from "./types";
 import type { HealthProfile } from "../types";
@@ -343,6 +344,81 @@ describe("浅解析", () => {
     assert.deepEqual(splitFragments("一包薯片，一杯奶茶"), ["一包薯片", "一杯奶茶"]);
     assert.deepEqual(splitFragments("两个鸡蛋、一碗米饭"), ["两个鸡蛋", "一碗米饭"]);
     assert.deepEqual(splitFragments("一包薯片 一杯奶茶"), ["一包薯片", "一杯奶茶"]);
+  });
+
+  it("同时说了份量与克数时，两个信息都要用上：「一包 70g 的薯片」", () => {
+    // 回归：这条路以前只取走 70g，把「一包」留进食物名 → 查库失败 →
+    // 退化成按分类兜底的拍脑袋克数（实测记成「肉包 200g」）
+    const p = parseFragment("一包 70g 的薯片");
+    assert.equal(p.amount, 1);
+    assert.equal(p.unit, "包");
+    assert.equal(p.name, "薯片");
+    assert.equal(p.perUnitGrams, 70);
+
+    assert.equal(parseFragment("两包70g的薯片").amount, 2);
+    assert.equal(parseFragment("两包70g的薯片").perUnitGrams, 70);
+    assert.equal(parseFragment("一袋100克的薯片").perUnitGrams, 100);
+    assert.equal(parseFragment("半包70g的薯片").amount, 0.5);
+  });
+
+  it("纯克数的写法仍是「数量就是克数」，不会变成 1 × 70g", () => {
+    // 回归：数量+量词那一组若做成可选，`70克薯片` 会掉进去变成 amount=1 / perUnitGrams=70。
+    // 数字一样，但记录里会显示成「1 克 · 70g」——读起来是错的
+    assert.equal(parseFragment("70克薯片").amount, 70);
+    assert.equal(parseFragment("70克薯片").perUnitGrams, undefined);
+    assert.equal(parseFragment("薯片70克").name, "薯片");
+  });
+
+  it("⚠️ 只有量词、没说是吃什么时，量词不能变成食物名", () => {
+    // 回归：正则回溯会把「一包」切成 { unit: undefined, name: "包" }，
+    // 而「包」再被模糊检索配成「肉包」—— 一包薯片记成 200g 肉包，全错且不报错
+    const p = parseFragment("一包");
+    assert.equal(p.unit, "包");
+    assert.equal(p.name, "");
+  });
+
+  it("切段不会把被空白打散的份量切碎", () => {
+    // 回归：原本按空白切，「薯片 70 克」变成 ["薯片","70","克"]，
+    // 第一段没份量走兜底、后两段又凑不出食物名 —— parseFragment 支持这种写法却永远轮不到它
+    assert.deepEqual(splitFragments("薯片 70 克"), ["薯片70克"]);
+    assert.deepEqual(splitFragments("一包 70g 的薯片"), ["一包70g的薯片"]);
+    assert.deepEqual(splitFragments("500ml 奶茶"), ["500ml奶茶"]);
+  });
+});
+
+describe("一句话记录 · 兜底不许算错", () => {
+  it("「一包 70g 的薯片」记成薯片 70g（曾经记成肉包 200g）", () => {
+    const [c] = resolveText("一包 70g 的薯片");
+    assert.equal(c.food?.name, "薯片");
+    assert.equal(c.grams, 70);
+    assert.equal(c.missing, false);
+  });
+
+  it("「两包70g的薯片」是 140g，不是 70g", () => {
+    const [c] = resolveText("两包70g的薯片");
+    assert.equal(c.food?.name, "薯片");
+    assert.equal(c.grams, 140);
+  });
+
+  it("「薯片 70 克」记成 70g（曾经被切碎、走兜底成 50g）", () => {
+    const [c] = resolveText("薯片 70 克");
+    assert.equal(c.food?.name, "薯片");
+    assert.equal(c.grams, 70);
+  });
+
+  it("单字不给模糊检索：量词残渣不会配成任意食物", () => {
+    assert.equal(matchFood("包"), undefined);
+    assert.equal(matchFood(""), undefined);
+    assert.equal(matchFood("   "), undefined);
+    // 单字的**精确**命中仍然放行：库里确实有正名就是一个字的条目
+    assert.equal(matchFood("醋")?.name, "醋");
+  });
+
+  it("只有份量没说是吃什么时，直说没读出食物名，而不是给个错数字", () => {
+    const [c] = resolveText("一包");
+    assert.equal(c.missing, true);
+    assert.equal(c.food, undefined);
+    assert.match(c.basis, /没说是吃什么/);
   });
 });
 

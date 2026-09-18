@@ -76,7 +76,18 @@ export type MenuNutrition =
       basis: string;
     }
   /** 连猜都猜不出来 —— 不编数字 */
-  | { kind: "none"; basis: string };
+  | {
+      kind: "none";
+      basis: string;
+      /**
+       * 已经认出来的食材（可能为空）。
+       *
+       * 这部分**不参与任何数字** —— 它只是给界面用来"一键关联"的线索：
+       * 「砂锅米线」我们认出了「米线」，那就把米线摆出来让用户点一下，
+       * 而不是让他自己再去搜一遍。不给数字，但把已经知道的事说满。
+       */
+      recognized: DishIngredient[];
+    };
 
 /** 菜单库里一条菜最少要知道这些才能估 */
 export type DishLike = {
@@ -225,7 +236,11 @@ export function estimateDish(dish: DishLike): MenuNutrition {
   // 2) 拆菜名里的食材
   const ingredients = splitDishIngredients(dish.name);
   if (!ingredients.length) {
-    return { kind: "none", basis: `库里没有能和「${dish.name}」对上的食材，估不出来` };
+    return {
+      kind: "none",
+      basis: `库里没有能和「${dish.name}」对上的食材，估不出来`,
+      recognized: [],
+    };
   }
 
   // 拆不干净就干脆不估：漏掉的那几样只会让真实值更高，给个够不着的区间是骗人
@@ -234,7 +249,8 @@ export function estimateDish(dish: DishLike): MenuNutrition {
     const found = ingredients.map((i) => `「${i.foodName}」`).join("、");
     return {
       kind: "none",
-      basis: `只认出${found}，菜名剩下的部分没法对上库里的食物，怕估少了就不估了 —— 关联一下就能算`,
+      basis: `只认出${found}，菜名剩下的部分没法对上库里的食物，怕估少了就不估了 —— 下面点一下就能关联`,
+      recognized: ingredients,
     };
   }
 

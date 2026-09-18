@@ -169,6 +169,120 @@ async function goto(page, url) {
   await sleep(400);
 }
 
+/**
+ * 删临时浏览器目录：**删不掉不算失败**。
+ *
+ * Edge/Chrome 在 Windows 上关掉之后还会攥着 profile 里的 SQLite 一小会儿，
+ * `rmSync` 直接抛 EBUSY —— 那会把一次**断言全过的绿色运行**变成非零退出码（实测撞到过）。
+ * 一个"偶尔无故变红"的闸门比没有闸门更糟：人会学会忽略它。所以退避重试，最后仍失败只警告。
+ */
+async function removeProfileDir(dir) {
+  for (let i = 0; i < 5; i++) {
+    try {
+      rmSync(dir, { recursive: true, force: true });
+      return;
+    } catch {
+      await sleep(300 * (i + 1));
+    }
+  }
+  console.warn(`⚠ 临时浏览器目录没删掉（不影响本次结果，可手动清理）：${dir}`);
+}
+
+/**
+ * 定向检查：**进度环第一次点击就该有动画**。
+ *
+ * 这条 bug 只能靠"时间"看出来 —— 静态截图毫无用处：首次挂载时元素已经处于最终值，
+ * 截图和"动画播完了"长得一模一样。所以判据取两条，缺一不可：
+ *
+ * 1) **进度为 0 时那根弧线必须已经在 DOM 里。**
+ *    原实现是 `{safe > 0 && <circle/>}`：0% 时压根没有这个元素，
+ *    第一次点击才让它首次挂载 —— 而 CSS transition 不会在挂载时播放，
+ *    于是表现为"第一次点没动画，第二次之后才有"。
+ * 2) **点一下之后立刻连采样，必须出现过中间值。**
+ *    中间值存在 ⇒ 它在过渡；只有首尾两值 ⇒ 直接跳过去了。
+ *
+ * 定位只用 `aria-label`（读屏本来就要用的东西），不碰 class 名，样式重构不会误伤它。
+ */
+async function checkRingAnimates(page, baseUrl, failures) {
+  const RING = '[aria-label^="喝水已完成"]';
+  const sel = JSON.stringify(RING);
+  await goto(page, `${baseUrl}/?ring=${Date.now()}`);
+
+  const r = await evaluate(
+    page,
+    `(async () => {
+      const parse = (el) => parseFloat(getComputedStyle(el).strokeDashoffset);
+      const ring = () => document.querySelector(${sel});
+      if (!ring()) return { ok: false, why: "页面上找不到喝水进度环" };
+      const arcs = () => {
+        const c = ring().querySelectorAll("svg circle");
+        return c[c.length - 1];
+      };
+      const find = (text) => [...document.querySelectorAll("button")].find((b) => b.innerText.includes(text));
+      const tick = () => new Promise((res) => requestAnimationFrame(res));
+
+      /*
+       * ⚠️ 前提要自己造，不能假设数据。
+       * 样例备份里"今天"的水可能本来就是满的（实测 100%），此时 offset 已经在终点，
+       * 再点「＋1 杯」什么都不会变 —— 检查会以"点击没生效"的名义误报。
+       * 所以先一路减到 0，再开始测"第一次点击"。
+       */
+      const minus = find("－1 杯");
+      if (!minus) return { ok: false, why: "找不到「－1 杯」按钮" };
+      for (let i = 0; i < 60 && !minus.disabled; i++) {
+        minus.click();
+        await tick();
+      }
+      await new Promise((res) => setTimeout(res, 700)); // 等过渡收尾，免得读到上一段的插值
+
+      const label0 = ring().getAttribute("aria-label");
+      const circles = ring().querySelectorAll("svg circle").length;
+      const start = parse(arcs());
+
+      const plus = find("＋1 杯");
+      if (!plus) return { ok: false, why: "找不到「＋1 杯」按钮", label0, circles, start };
+      if (plus.disabled) return { ok: false, why: "水减到 0 之后「＋1 杯」还是禁用的", label0, circles, start };
+
+      plus.click();
+      // 连采一整个过渡窗口（0.45s），拿到的是插值序列
+      const seen = [];
+      const t0 = performance.now();
+      while (performance.now() - t0 < 460) {
+        await tick();
+        seen.push(parse(arcs()));
+      }
+      await new Promise((res) => setTimeout(res, 350));
+      return { ok: true, label0, circles, start, end: parse(arcs()), seen };
+    })()`,
+  );
+
+  if (!r.ok) {
+    failures.push(`进度环动画：${r.why}`);
+    console.log(`✗ 进度环动画检查没跑成：${r.why}`);
+    return;
+  }
+
+  const label = (r.label0 ?? "").replace(/喝水已完成\s*/, "");
+  const between = r.seen.filter((v) => v !== r.start && v !== r.end);
+  const ok = r.circles >= 2 && r.end !== r.start && between.length > 0;
+
+  console.log(
+    `${ok ? "✓" : "✗"} 进度环首次点击就有动画（起点 ${label}，弧线元素 ${r.circles} 个，` +
+      `offset ${r.start.toFixed(1)} → ${r.end.toFixed(1)}，采到 ${between.length} 个中间值）`,
+  );
+  if (r.circles < 2) {
+    failures.push(
+      `进度环在 ${r.label0} 时只有 ${r.circles} 个 circle —— 弧线没挂载，「第一次点击」永远不可能有动画`,
+    );
+  } else if (r.end === r.start) {
+    failures.push(`进度环点了「＋1 杯」之后 offset 没变（${r.start}）—— 点击没生效或环没跟着走`);
+  } else if (between.length === 0) {
+    failures.push(
+      `进度环 offset 从 ${r.start.toFixed(1)} 一步跳到 ${r.end.toFixed(1)}，没采到中间值 —— 过渡没生效`,
+    );
+  }
+}
+
 // ---------- 按需拉起预览服务 ----------
 //
 // 冒烟测试依赖一个静态服务把 out/ 挂在子路径下。要求人先手动起服务，
@@ -447,6 +561,10 @@ try {
     }
   }
 
+  // 页面渲染断言跑完再查动画：这一步会真的点一下「＋1 杯」，会写进 localStorage，
+  // 放在前面会污染后面那些"数据还在不在"的断言
+  await checkRingAnimates(page, BASE_URL, failures);
+
   if (failures.length) {
     console.log(`\n✗ ${failures.length} 个页面没显示出应有的内容（数据来源：${seedLabel}）：`);
     for (const f of failures) console.log("   · " + f);
@@ -476,5 +594,5 @@ try {
   browserLevel?.close();
   previewProc?.kill();
   await sleep(300);
-  rmSync(profile, { recursive: true, force: true });
+  await removeProfileDir(profile);
 }

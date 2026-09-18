@@ -1,13 +1,32 @@
 /**
- * 中文口语的**浅解析**（P1 范围）。
+ * 中文口语的**浅解析**。
  *
  * 只做一件事：把「晚上吃了一包薯片」这样的片段，切成
  * `{ 数量, 量词, 食物名 }` 三个可直接查表的部分。
  *
- * 刻意不做的事（P2 才做）：歧义消解、跨句指代、LLM 兜底、单位换算的常识推理。
+ * 刻意不做的事（留给 LLM 层）：歧义消解、跨句指代、单位换算的常识推理。
  * 这里的规则是**零成本、可离线**的第一层，覆盖「数量 + 量词 + 食物名」这一高频形态即可。
  *
  * ⚠️ 这里是纯字符串处理，**不产生任何营养数字**。数字只能由 core.ts 从库里算出来。
+ *
+ * ⚠️ 三条踩过的坑，改这个文件前先读（都会导致**静默算错**，而不是报错）：
+ *
+ * 1. **「数量 + 量词」与「明确克数」可以同时出现。**
+ *    「一包 70g 的薯片」里 `70g` 被当成唯一的份量依据、`一包` 被留进食物名，
+ *    于是查库失败 → 退化成按分类兜底的拍脑袋克数。
+ *    现在这种形态拆成 `{ amount: 1, unit: "包", perUnitGrams: 70 }`，两个信息都用上。
+ *
+ * 2. **空白会把一个片段切碎。**
+ *    `splitFragments` 原本按空白切，于是「薯片 70 克」变成
+ *    `["薯片", "70", "克"]` 三段 —— 第一段「薯片」没有份量、走兜底，
+ *    后两段又凑不出食物名。`parseFragment` 明明支持这种写法，却永远轮不到它。
+ *    所以切段之前先 `glueMeasures()` 把「数量/克数/单位」之间的空白粘掉。
+ *
+ * 3. **正则回溯会在食物名里留下量词残渣。**
+ *    「一包」这种只有量词没有食物的输入，正则会把 `包` 留作食物名，
+ *    而模糊检索会把它配成**任意一个含该字的食物**（实测命中「肉包」200g）。
+ *    用户嘴里的一包薯片，账本上记成 200g 肉包 —— 全错且没有任何提示。
+ *    所以：量词残渣一律归位成 `unit`，食物名留空；单字不做模糊检索（见 quickadd）。
  */
 
 /** 与 data/foodPortions.json 的 unit 保持一致的量词表 */
@@ -16,11 +35,24 @@ export const PORTION_UNITS = [
   "个", "根", "只", "片", "块", "勺", "串", "把", "条", "扎", "桶",
 ];
 
+/** 量词集合：用来识别「名字其实是个量词」这种被正则回溯切出来的残渣 */
+const PORTION_UNIT_SET = new Set(PORTION_UNITS);
+const UNIT_CLASS = PORTION_UNITS.join("");
+
 /** 数量词：中文数字 + 「半」。「两」比「二」在口语里常见得多，两个都要认 */
 const CN_NUM: Record<string, number> = {
   一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5,
   六: 6, 七: 7, 八: 8, 九: 9, 十: 10, 半: 0.5,
 };
+
+const NUM = "[0-9]+(?:\\.[0-9]+)?";
+const CN_UNIT_NUM = "[一二两三四五六七八九十半]";
+
+/**
+ * 「自己称过」的单位。
+ * ⚠️ 必须**长词在前**：否则 `kg` 会被 `k` + `g` 吃成「克」，`毫升` 会被单字截断。
+ */
+const MEASURE_ALT = "千克|公斤|毫升|克|kg|KG|Kg|ML|mL|ml|g|G";
 
 /**
  * 句子开头的噪音：时间词、主语、动词、模糊限定词。
@@ -40,15 +72,52 @@ const LEAD_NOISE = [
 ];
 
 const FRAGMENT_RE = new RegExp(
-  `^([0-9]+(?:\\.[0-9]+)?|[一二两三四五六七八九十半])?\\s*([${PORTION_UNITS.join("")}])?\\s*(.+)$`,
+  `^([0-9]+(?:\\.[0-9]+)?|[一二两三四五六七八九十半])?\\s*([${UNIT_CLASS}])?\\s*(.+)$`,
 );
+
+/**
+ * 「数量 + 量词 + 明确克数 + 食物名」：一包70g的薯片 / 两包70g薯片 / 1袋100克的薯片
+ *
+ * ⚠️ 「数量 + 量词」必须是**成对出现、且不可省略**的一组，不能两边各自可选。
+ * 各自可选时 `70克薯片` 会走这条路并被回溯成「数量 7 + 克数 0」——不报错，直接算出 0g。
+ * 而如果只把"成对"做成可选组，`70克薯片` 又会掉进来被解释成「1 × 70g」，
+ * `amount` 从 70 变成 1 —— 语义上等价，但记录里会显示成「1 克 · 70g」，读起来是错的。
+ * 所以这条路**只在真的说了份量时才走**；纯克数的形态交给下面 WEIGHT_RE / TRAILING_RE。
+ */
+const COMBINED_RE = new RegExp(
+  `^(${NUM}|${CN_UNIT_NUM})\\s*([${UNIT_CLASS}])\\s*(${NUM})\\s*(?:${MEASURE_ALT})\\s*的?\\s*(.+)$`,
+);
+
+/** 「食物名 + 尾随克数」：薯片70克 / 薯片 70 克 */
+const TRAILING_RE = new RegExp(`^(.+?)\\s*(${NUM})\\s*(?:${MEASURE_ALT})\\s*$`);
 
 /** 明确写了重量/体积：用户自己称过，优先级最高 */
 const WEIGHT_RE = /([0-9]+(?:\.[0-9]+)?)\s*(克|g|G|ml|mL|ML|毫升)/;
 
-/** 按中英文逗号、顿号、分号、空白切段 */
+/**
+ * 把「数量 / 克数 / 单位」之间的空白粘掉，免得切段时被切散。
+ *
+ * 只处理**阿拉伯数字 + 度量单位**的组合 —— 纯中文的量词之间不动，
+ * 这样「一包薯片 一杯奶茶」仍然能按空白切成两段（用户确实是这么写的）。
+ */
+export function glueMeasures(text: string): string {
+  return (
+    text
+      // 「70 克」→「70克」
+      .replace(new RegExp(`(${NUM})\\s+(${MEASURE_ALT})`, "g"), "$1$2")
+      // 「一包 70g」→「一包70g」
+      .replace(new RegExp(`((?:${NUM}|${CN_UNIT_NUM})[${UNIT_CLASS}])\\s+(?=${NUM})`, "g"), "$1")
+      // 「70g 的薯片」→「70g的薯片」
+      .replace(new RegExp(`(${NUM}(?:${MEASURE_ALT}))\\s+(?=的)`, "g"), "$1")
+      // 「薯片 70克」→「薯片70克」；「500ml 奶茶」→「500ml奶茶」
+      .replace(new RegExp(`([\\u4e00-\\u9fa5])\\s+(?=${NUM}(?:${MEASURE_ALT}))`, "g"), "$1")
+      .replace(new RegExp(`(${NUM}(?:${MEASURE_ALT}))\\s+(?=[\\u4e00-\\u9fa5])`, "g"), "$1")
+  );
+}
+
+/** 按中英文逗号、顿号、分号、空白切段（切之前先把被空白打散的份量粘回来） */
 export function splitFragments(text: string): string[] {
-  return text
+  return glueMeasures(text)
     .split(/[，,、;；\s]+/)
     .map((s) => s.trim())
     .filter(Boolean);
@@ -65,6 +134,11 @@ export function stripLeadNoise(fragment: string): string {
   return out;
 }
 
+/** 清掉食物名里残留的连接词与空白：「的薯片」→「薯片」 */
+function tidyName(s: string): string {
+  return s.replace(/^的/, "").replace(/[\s\u3000]+/g, "").trim();
+}
+
 export type ParsedFragment = {
   /** 原文 */
   raw: string;
@@ -73,40 +147,84 @@ export type ParsedFragment = {
   amount: number;
   unit?: string;
   name: string;
+  /**
+   * 每个单位有多少克 —— 用户既说了份量又说了克数时才给（「一包70g的薯片」）。
+   * 有它就意味着**用户自己称过**，不必再查份量表。
+   */
+  perUnitGrams?: number;
 };
 
 /**
- * 解析一个片段。**只认第一个量词出现的形态**，不做更复杂的组合。
+ * 解析一个片段。
  *
  * 例：
- *   「晚上吃了一包薯片」 → { amount: 1, unit: "包", name: "薯片" }
- *   「两个鸡蛋」         → { amount: 2, unit: "个", name: "鸡蛋" }
- *   「薯片 70 克」       → { amount: 70, unit: "克", name: "薯片" }
- *   「奶茶」             → { amount: 1, unit: undefined, name: "奶茶" }
+ *   「晚上吃了一包薯片」   → { amount: 1, unit: "包", name: "薯片" }
+ *   「两个鸡蛋」           → { amount: 2, unit: "个", name: "鸡蛋" }
+ *   「一包 70g 的薯片」    → { amount: 1, unit: "包", name: "薯片", perUnitGrams: 70 }
+ *   「薯片 70 克」         → { amount: 70, unit: "克", name: "薯片" }
+ *   「一包」               → { amount: 1, unit: "包", name: "" }（只有量词，没说是吃什么）
+ *   「奶茶」               → { amount: 1, unit: undefined, name: "奶茶" }
  */
 export function parseFragment(raw: string): ParsedFragment {
   const cleaned = stripLeadNoise(raw);
 
+  // 1) 数量 + 量词 + 明确克数，三者同时出现：「一包 70g 的薯片」
+  const combo = cleaned.match(COMBINED_RE);
+  if (combo) {
+    const [, cnt, unit, grams, name] = combo;
+    const nameOut = tidyName(name ?? "");
+    const per = Number(grams);
+    // per 必须为正：0 克是"把数字吃掉了"，不是用户的意思，宁可退回下面几条路
+    if (nameOut && per > 0) {
+      return {
+        raw,
+        cleaned,
+        amount: cnt ? (CN_NUM[cnt] ?? Number(cnt)) : 1,
+        unit: unit || undefined,
+        name: nameOut,
+        perUnitGrams: per,
+      };
+    }
+  }
+
+  // 2) 食物名 + 尾随克数：「薯片 70 克」
+  const trailing = cleaned.match(TRAILING_RE);
+  if (trailing) {
+    const nameOut = tidyName(trailing[1]);
+    if (nameOut) {
+      return { raw, cleaned, amount: Number(trailing[2]), unit: "克", name: nameOut };
+    }
+  }
+
+  // 3) 克数写在前面或中间：「70克薯片」「70g 的薯片」
   const weight = cleaned.match(WEIGHT_RE);
   if (weight) {
-    return {
-      raw,
-      cleaned,
-      amount: Number(weight[1]),
-      unit: "克",
-      name: cleaned.replace(weight[0], "").trim(),
-    };
+    const nameOut = tidyName(cleaned.replace(weight[0], ""));
+    if (nameOut) {
+      return { raw, cleaned, amount: Number(weight[1]), unit: "克", name: nameOut };
+    }
   }
 
   const m = cleaned.match(FRAGMENT_RE);
   if (m) {
     const [, numToken, unit, name] = m;
+    let nameOut = (name ?? "").trim();
+    let unitOut = unit || undefined;
+
+    // ⚠️ 正则回溯的残渣：「一包」会被切成 { unit: undefined, name: "包" }，
+    // 然后「包」被模糊检索配成任意含该字的食物（实测「肉包」200g）。
+    // 量词就该归位成量词，食物名留空让上层说清楚「没读出食物名」。
+    if (!unitOut && PORTION_UNIT_SET.has(nameOut) && nameOut.length === 1) {
+      unitOut = nameOut;
+      nameOut = "";
+    }
+
     return {
       raw,
       cleaned,
       amount: numToken ? (CN_NUM[numToken] ?? Number(numToken)) : 1,
-      unit: unit || undefined,
-      name: (name ?? "").trim(),
+      unit: unitOut,
+      name: nameOut,
     };
   }
 

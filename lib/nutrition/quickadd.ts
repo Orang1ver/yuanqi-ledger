@@ -42,9 +42,22 @@ export type QuickCandidate = {
   rule?: PortionRule;
 };
 
-/** 找食物：先精确名再模糊 — 精确优先，免得「奶茶」被「奶茶（无糖）」抢走 */
+/**
+ * 找食物：先精确名再模糊 — 精确优先，免得「奶茶」被「奶茶（无糖）」抢走。
+ *
+ * ⚠️ **单字不给模糊检索。** 模糊检索有一条「被查询包含」的规则
+ * （`q.includes(名字)`），对 1 个字的查询等于"随便挑一个含这个字的食物"：
+ * 实测把量词残渣「包」配成了「肉包」200g。宁可返回 undefined 让上层说"没匹配到"，
+ * 也不要给出一个**看起来正常的错数字**。
+ * 单字的**精确**命中仍然放行（库里有「醋」「盐」这种正名单字）。
+ */
 export function matchFood(name: string): FoodItem | undefined {
-  return findFoodByName(name) ?? searchFoods(name, 1)[0];
+  const q = name.trim();
+  if (!q) return undefined;
+  const exact = findFoodByName(q);
+  if (exact) return exact;
+  if (q.length < 2) return undefined;
+  return searchFoods(q, 1)[0];
 }
 
 function resolveOne(fragment: string, altLimit: number): QuickCandidate {
@@ -62,6 +75,13 @@ function resolveOne(fragment: string, altLimit: number): QuickCandidate {
     alternatives: [],
   };
 
+  // 只有份量没说是吃什么（「一包」「半杯」）—— 不能拿残留的量词去模糊匹配
+  if (!parsed.name) {
+    c.missing = true;
+    c.basis = `「${fragment}」里只有份量、没说是吃什么 —— 补上食物名就能算`;
+    return c;
+  }
+
   const food = matchFood(parsed.name);
   if (!food) {
     c.missing = true;
@@ -74,6 +94,15 @@ function resolveOne(fragment: string, altLimit: number): QuickCandidate {
   c.food = food;
   c.name = food.name;
   c.alternatives = dedupe([food, ...searchFoods(parsed.name, altLimit)]);
+
+  // 用户既说了份量又说了克数（「一包 70g 的薯片」）—— 两个信息都用上：
+  // 数量进 `amount`（记录里显示「1 包」，跟他说的一致），克数由 perUnitGrams 定。
+  if (parsed.perUnitGrams) {
+    const per = parsed.perUnitGrams;
+    c.grams = parsed.amount * per;
+    c.basis = `你说的「${fmt(parsed.amount)}${parsed.unit ?? ""} ${fmt(per)}g」= ${fmt(parsed.amount)} × ${fmt(per)}g = ${fmt(c.grams)}g`;
+    return c;
+  }
 
   if (parsed.unit === "克") {
     c.grams = parsed.amount;

@@ -61,6 +61,31 @@ describe("菜单库 · 估算的诚实边界", () => {
   it("完全对不上时给 none，不编数字", () => {
     const m = estimateDish({ name: "店里自创的招牌乱炖" });
     assert.equal(m.kind, "none");
+    if (m.kind === "none") assert.deepEqual(m.recognized, []);
+  });
+
+  it("拒绝估算时，把已经认出来的食材交出来 —— 界面靠它做一键关联", () => {
+    // 「砂锅米线」认得出「米线」，只是菜名剩下的字对不上，于是拒估。
+    // 以前界面只给一句"关联一下"，用户得自己在搜索框里重打一遍；
+    // 现在要把米线直接摆成按钮，点一下就进定份量那一步。
+    for (const [name, expected] of [
+      ["砂锅米线", "米线"],
+      ["黄焖鸡米饭（微辣）", "米饭"],
+    ] as const) {
+      const m = estimateDish({ name });
+      assert.equal(m.kind, "none", `${name} 不该给出数字`);
+      if (m.kind !== "none") continue;
+      assert.ok(
+        m.recognized.some((i) => i.foodName === expected),
+        `${name} 应认出「${expected}」，实际：${m.recognized.map((i) => i.foodName).join("、") || "（空）"}`,
+      );
+      // ⚠️ 认出来的这批**不参与任何数字**：它只是线索，不是估算依据。
+      // 类型上就没有 kcal —— 这里用一次赋值把这条约束钉在类型检查里
+      for (const ing of m.recognized) {
+        assert.equal(typeof ing.grams, "number");
+        assert.ok(!("nutrition" in ing), "线索里不该带营养值");
+      }
+    }
   });
 
   it("库里没有、又没关联 → 每一档都必须能说出理由", () => {

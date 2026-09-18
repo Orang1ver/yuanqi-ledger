@@ -310,7 +310,7 @@ export function TakeoutLibrary() {
 
             <p className="yq-hint" style={{ marginBottom: 8 }}>
               这一组 {list.length} 道菜合计约 {est.loKcal}~{est.hiKcal} kcal
-              {est.unknown ? `，另有 ${est.unknown} 道估不出来（关联一下就能算）` : ""}
+              {est.unknown ? `，另有 ${est.unknown} 道估不出来（下面点一下就能关联）` : ""}
             </p>
 
             {list.map((d) =>
