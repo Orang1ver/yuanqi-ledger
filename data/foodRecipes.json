@@ -209,6 +209,68 @@
         { "foodId": "jiangyou", "grams": 5 },
         { "foodId": "yan", "grams": 1.5 }
       ]
+    },
+    {
+      "foodId": "tudouni",
+      "yieldG": 190,
+      "note": "按土豆 150g + 黄油 10g + 牛奶 30g 估；西式土豆泥还会加更多黄油，这里偏保守",
+      "parts": [
+        { "foodId": "potato-steamed", "grams": 150 },
+        { "foodId": "huangyou", "grams": 10 },
+        { "foodId": "milk-whole", "grams": 30 },
+        { "foodId": "yan", "grams": 0.5 }
+      ]
+    },
+    {
+      "foodId": "galijiroufan",
+      "yieldG": 520,
+      "note": "含米饭 250g；咖喱粉按 12g（约两平勺），土豆胡萝卜是食堂版的常见配菜",
+      "parts": [
+        { "foodId": "rice-cooked", "grams": 250 },
+        { "foodId": "jixiongrou", "grams": 100 },
+        { "foodId": "potato-steamed", "grams": 80 },
+        { "foodId": "huluobo", "grams": 40 },
+        { "foodId": "yangcong", "grams": 30 },
+        { "foodId": "galifen", "grams": 12 },
+        { "foodId": "zhiwuyou", "grams": 8 },
+        { "foodId": "yan", "grams": 1.2 }
+      ]
+    },
+    {
+      "foodId": "gongbaojidingfan",
+      "yieldG": 400,
+      "note": "含米饭 250g；宫保鸡丁本身按库里的整条数值，不重算",
+      "parts": [
+        { "foodId": "gongbaojiding", "grams": 150 },
+        { "foodId": "rice-cooked", "grams": 250 }
+      ]
+    },
+    {
+      "foodId": "shousijikaoroubanfan",
+      "yieldG": 570,
+      "note": "含米饭 250g 与土豆泥 120g；奥尔良烤肉用「烤鸡腿」近似（腌料里的糖与盐没单列，钠偏保守）",
+      "parts": [
+        { "foodId": "rice-cooked", "grams": 250 },
+        { "foodId": "jixiongrou", "grams": 80 },
+        { "foodId": "kaojitui", "grams": 80 },
+        { "foodId": "tudouni", "grams": 120 },
+        { "foodId": "shengcai", "grams": 40 },
+        { "foodId": "zhiwuyou", "grams": 5 }
+      ]
+    },
+    {
+      "foodId": "zhujiaokaoroufan",
+      "yieldG": 400,
+      "note": "含米饭 250g；猪脚按卤好的熟重、烤肉用里脊代；孜然辣酱只按酱油+油算，香辛料不计",
+      "parts": [
+        { "foodId": "rice-cooked", "grams": 250 },
+        { "foodId": "zhuti-shu", "grams": 80 },
+        { "foodId": "zhuliji", "grams": 60 },
+        { "foodId": "shengcai", "grams": 40 },
+        { "foodId": "zhiwuyou", "grams": 8 },
+        { "foodId": "jiangyou", "grams": 8 },
+        { "foodId": "yan", "grams": 0.8 }
+      ]
     }
   ]
 }

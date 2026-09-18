@@ -8,6 +8,7 @@
     "note": "数值引用台账：只记**引用标识**（哪个库、哪一条食物、什么时候取的），不复制表格数值。⚠️ code 是官方查询接口里的**食物编号**，**不是网页页码** —— 官网 UI 上根本没有「按编号查」的入口，之前写成「网页 N」会让人以为点开某个网址就能看到它。要核对请走接口：POST https://nlc.chinanutri.cn/fq/FoodInfoQueryAction!queryFoodInfoList.do，表单字段 categoryOne / categoryTwo / foodName / pageNum / field / flag（不筛分类时前两个填 0，foodName 填 0 表示不按名字筛）。返回 JSON 的 list 里，每条的第 0 个字段就是 code、第 2 个是食物名、第 7 个是能量（kJ，除以 4.184 得 kcal）、第 24 个是钠。按名字搜时注意：**词里带括号会搜不到，得用短词**。该站声明数据仅限非商业使用。新增条目若 source 里写了这个来源，就必须在这里登记，否则 check:reference 会拦下。"
   },
   "entries": [
+    { "foodId": "galifen", "code": 1580, "retrieved": "2026-09-19" },
     { "foodId": "juancai", "code": 463, "retrieved": "2026-09-18" },
     { "foodId": "xilanhua", "code": 465, "retrieved": "2026-09-18" },
     { "foodId": "shengcai", "code": 483, "retrieved": "2026-09-18" },

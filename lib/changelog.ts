@@ -17,6 +17,15 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.13.2",
+    date: "2026-09-19",
+    highlights: [
+      "加了咖喱鸡肉饭、宫保鸡丁饭、手撕鸡奥尔良烤肉拌饭、土豆泥、猪脚烤肉饭 —— 你说的那几样现在都算得出来",
+      "修掉「一份宫保鸡丁饭」只算菜不算饭的老问题（整碗米饭被丢了，少算近一半）",
+      "顺带挖出两处同类错误：一份烤鸭饭、一杯乳酸菌饮料以前也少算",
+    ],
+  },
+  {
     version: "0.13.1",
     date: "2026-09-19",
     highlights: [

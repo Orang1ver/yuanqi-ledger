@@ -199,12 +199,27 @@ if (SELFTEST) {
   }
   jiaoziRule.match.push("饺");
 
+  /*
+   * 第六处破坏，喂给「更具体的规则被泛化规则挡住」那条检查（④b2）。
+   *
+   * 往**表头**塞一条泛化的 `份[拌饭] = 300g`：份序是"先命中先赢"，于是
+   * 「手撕鸡奥尔良烤肉拌饭」会先命中它（300g），而后面那条专门的 570g 永远走不到。
+   * 这正是 2026-09-19 真踩过的两次（鸡米花 150 盖住 100；猪脚烤肉饭 300 盖住 400），
+   * 而 ④b / ④d 都是绿的 —— 只有克数是错的。
+   */
+  PORTIONS.rules.unshift({
+    unit: "份",
+    match: ["拌饭"],
+    portions: [{ label: "一份", grams: 300, range: [200, 400], isDefault: true, note: "自证用（故意排在具体规则前面）" }],
+  });
+
   sabotaged =
     `把「${victim.name}」的脂肪从 34 改成 3.4；` +
     "并塞进一条没有任何份量规则能命中的食物「自证用孤儿食物」；" +
     "再抽掉碗的干重专门规则，让「挂面」掉回熟重的 250g；" +
     "抹掉「一碗粥」那条规则的 note；" +
-    "最后往「一碗饺子」的 match 里塞一个谁也叫不上的单字词「饺」";
+    "往「一碗饺子」的 match 里塞一个谁也叫不上的单字词「饺」；" +
+    "最后在表头塞一条泛化的「一份拌饭 = 300g」，把更具体的拌饭规则挡住";
 }
 
 // ---------- 收集问题 ----------
@@ -284,14 +299,26 @@ for (const [i, f] of (LIBRARY.items ?? []).entries()) {
     } else if (f.kcal < CLOSURE_KCAL_FLOOR) {
       // 低热量食物跳过：分母太小，比值没有意义
     } else {
-      const computed = f.protein * 4 + f.fat * 9 + f.carb * 4;
+      /*
+       * ⚠️ **膳食纤维也是碳水，但它只供能约 2 kcal/g，不是 4**。
+       *
+       * 官方表把「碳水」与「膳食纤维」分列，所以纤维高的条目用 4/9/4 会**系统性高估**。
+       * 2026-09-19 加咖喱粉（纤维 36.9g/100g）时撞上：按 4 算 415 kcal，
+       * 比标注的 338.4 高 22.6%；把纤维按 2 算就是 341.2，差 0.8% —— 明显是判据的问题，不是数据的问题。
+       * 纤维低于 5g 的条目受这条影响很小（移动不到 10 kcal），所以这是一处**只对纤维高的条目生效**的修正。
+       */
+      const fiber = num(f.fiber) ? f.fiber : 0;
+      const carbEnergy = (f.carb - fiber) * 4 + fiber * 2;
+      const computed = f.protein * 4 + f.fat * 9 + carbEnergy;
       const delta = Math.abs(computed - f.kcal) / f.kcal;
       const isPureFat = num(f.fat) && f.fat >= 90;
       const tol = isPureFat ? TOLERANCE.pureFat : HIGH_FIBER_CATEGORIES.has(f.category) ? TOLERANCE.highFiber : TOLERANCE.default;
       if (delta > tol) {
         fail(
           at,
-          `闭合校验不过：${f.protein}×4 + ${f.fat}×9 + ${f.carb}×4 = ${computed.toFixed(1)}，` +
+          `闭合校验不过：${f.protein}×4 + ${f.fat}×9 + ${f.carb}${
+            fiber > 0 ? `（其中纤维 ${fiber}g 按 2 kcal/g 算）` : ""
+          }×4 = ${computed.toFixed(1)}，` +
             `与标注热量 ${f.kcal} 差 ${(delta * 100).toFixed(1)}%，超过容差 ${(tol * 100).toFixed(0)}%`,
         );
       }
@@ -384,6 +411,66 @@ for (const f of LIBRARY.items ?? []) {
       `${f.id} (${f.name})`,
       "没有任何份量规则命中它 —— 写「一份 / 一个」时会静默走分类兜底估算，出来的数字没有依据",
     );
+  }
+}
+
+// ---------- ④b2 更具体的规则被泛化规则挡住了 ----------
+
+/*
+ * 份量表是「同一量词下**先命中先赢**」，所以**具体规则必须排在泛化规则前面**。
+ * 排反了的后果是那条具体规则**永远走不到**，而且看不出任何异常：
+ * ④b 说"有规则命中"、④d 说"note 也写了" —— 只有克数是错的。
+ *
+ * 2026-09-19 一天里被这个咬了两回：
+ *   一份鸡米花  —— 前面有单字「鸡」的泛化规则(150g)，专门写的 100g 一直没生效；
+ *   一份猪脚烤肉饭 / 手撕鸡奥尔良烤肉拌饭 —— 前面有 `份[…烤肉饭…拌饭] = 300g`，
+ *     自己那条 400g / 570g 排在后面，探针算出来就是 300g。
+ *
+ * 判据：同一量词下，如果**后面**还有一条规则，它命中的词比当前生效的词**更长**
+ * （更长 = 更具体），而且克数还不一样 —— 那前面那条就是错的、后面那条是死的。
+ * 只在克数不同时报：克数一样时排反了也无害，报了只会变成噪音。
+ */
+{
+  const rules = PORTIONS.rules ?? [];
+  const units = [...new Set(rules.map((r) => r.unit).filter(Boolean))];
+  const firstWord = (r, names) => (r.match ?? []).find((m) => wordMatches(m, names));
+  const defaultGrams = (r) => (r.portions.find((p) => p.isDefault) ?? r.portions[0])?.grams;
+
+  for (const f of LIBRARY.items ?? []) {
+    const names = [f.name, ...(f.alias ?? [])].filter(Boolean);
+    if (!names.length) continue;
+
+    for (const unit of units) {
+      let winner = null;
+      let winnerWord = "";
+      let winnerIdx = -1;
+      for (const [i, r] of rules.entries()) {
+        if (r.unit !== unit) continue;
+        const w = firstWord(r, names);
+        if (!w) continue;
+        winner = r;
+        winnerWord = w;
+        winnerIdx = i;
+        break;
+      }
+      if (!winner) continue;
+
+      for (const [j, r] of rules.entries()) {
+        if (j <= winnerIdx || r.unit !== unit) continue;
+        const w = firstWord(r, names);
+        if (!w || w.length <= winnerWord.length) continue;
+        const a = defaultGrams(winner);
+        const b = defaultGrams(r);
+        if (a === b) continue;
+        fail(
+          `${f.id} (${f.name}) · 量词「${unit}」`,
+          `命中的是前面的「${winnerWord}」(${a}g)，但后面还有更具体的「${w}」(${b}g) —— ` +
+            "同一量词下先命中先赢，后面那条**永远走不到**。" +
+            "把具体规则挪到泛化规则前面（这是这个文件最容易出错的地方）",
+        );
+        break;
+      }
+    }
   }
 }
 
@@ -534,7 +621,7 @@ function report() {
 const failed = report();
 
 if (SELFTEST) {
-  // 五处破坏各对应一条检查，五条都必须在 problems 里出现才算自证通过。
+  // 六处破坏各对应一条检查，六条都必须在 problems 里出现才算自证通过。
   // 只断言"有问题"是不够的：那样其中一条检查坏掉了也照样绿。
   const expectKinds = [
     "闭合校验不过",
@@ -542,6 +629,7 @@ if (SELFTEST) {
     "干重数据",
     "没写这个克数指什么",
     "一条食物都命中不了",
+    "永远走不到",
   ];
   const missingKinds = expectKinds.filter((k) => !problems.some((p) => p.msg.includes(k)));
   if (missingKinds.length) {
@@ -549,7 +637,7 @@ if (SELFTEST) {
     console.error("  永远通过的闸门等于没有闸门，先去修那条检查。");
     process.exit(2);
   }
-  console.log(`\n✓ 自证通过：五处破坏都被对应的检查拦下了（共 ${problems.length} 个问题）。`);
+  console.log(`\n✓ 自证通过：六处破坏都被对应的检查拦下了（共 ${problems.length} 个问题）。`);
   console.log("  永远通过的闸门等于没有闸门，所以这一步不能省。");
   process.exit(0);
 }

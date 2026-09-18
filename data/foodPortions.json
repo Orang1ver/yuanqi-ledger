@@ -63,10 +63,13 @@
     { "unit": "杯", "match": ["橙汁", "果汁"], "portions": [
       { "label": "一杯", "grams": 300, "range": [200, 400], "isDefault": true }
     ] },
+    { "unit": "杯", "match": ["乳酸菌饮料", "乳酸菌"], "portions": [
+      { "label": "一杯", "grams": 330, "range": [100, 500], "isDefault": true, "note": "养乐多那种小瓶约 100g，常见大瓶约 330g" }
+    ] },
     { "unit": "杯", "match": ["酸奶"], "portions": [
       { "label": "一杯", "grams": 150, "range": [100, 250], "isDefault": true }
     ] },
-    { "unit": "杯", "match": ["可乐", "雪碧", "冰红茶", "乳酸菌", "饮料", "苏打水"], "portions": [
+    { "unit": "杯", "match": ["可乐", "雪碧", "冰红茶", "饮料", "苏打水"], "portions": [
       { "label": "一杯", "grams": 330, "range": [250, 500], "isDefault": true }
     ] },
     { "unit": "杯", "match": ["啤酒", "红酒", "白酒", "黄酒"], "portions": [
@@ -146,6 +149,9 @@
     { "unit": "份", "match": ["玉米淀粉", "淀粉", "生粉", "粟粉"], "portions": [
       { "label": "一份", "grams": 15, "range": [5, 40], "isDefault": true, "note": "勾芡或裹粉用的一份，约 15g" }
     ] },
+    { "unit": "份", "match": ["猪脚饭", "烤鸭饭"], "portions": [
+      { "label": "一份", "grams": 330, "range": [280, 400], "isDefault": true, "note": "含米饭的盖饭，一份约 330g" }
+    ] },
     { "unit": "份", "match": ["北京烤鸭", "烤鸭", "片皮鸭"], "portions": [
       { "label": "一份", "grams": 150, "range": [80, 250], "isDefault": true, "note": "按带皮鸭肉算，一份约 150g" }
     ] },
@@ -158,12 +164,28 @@
     { "unit": "盘", "match": ["蛋炒饭", "炒饭"], "portions": [
       { "label": "一盘", "grams": 320, "range": [250, 450], "isDefault": true, "note": "餐馆一盘的量" }
     ] },
+    { "unit": "份", "match": ["土豆泥"], "portions": [
+      { "label": "一份", "grams": 190, "range": [133, 247], "isDefault": true, "note": "一小碗土豆泥，约 190g（土豆 150g 打底）" }
+    ] },
+    { "unit": "份", "match": ["咖喱鸡肉饭"], "portions": [
+      { "label": "一份", "grams": 520, "range": [364, 676], "isDefault": true, "note": "含米饭的一份盖饭，约 520g" }
+    ] },
+    { "unit": "份", "match": ["宫保鸡丁饭"], "portions": [
+      { "label": "一份", "grams": 400, "range": [280, 520], "isDefault": true, "note": "含米饭 250g；宫保鸡丁与饭一起约 400g" }
+    ] },
+    { "unit": "份", "match": ["手撕鸡奥尔良烤肉拌饭"], "portions": [
+      { "label": "一份", "grams": 570, "range": [399, 741], "isDefault": true, "note": "含米饭与土豆泥的大份拌饭，约 570g" }
+    ] },
+    { "unit": "份", "match": ["猪脚烤肉饭"], "portions": [
+      { "label": "一份", "grams": 400, "range": [280, 520], "isDefault": true, "note": "含米饭的一份盖饭，约 400g" }
+    ] },
     { "unit": "份", "match": ["卤肉饭", "烤肉饭", "拌饭"], "portions": [
       { "label": "一份", "grams": 300, "range": [250, 400], "isDefault": true, "note": "含米饭，按一份 300g 成品算" }
     ] },
-    { "unit": "份", "match": ["猪脚饭", "烤鸭饭"], "portions": [
-      { "label": "一份", "grams": 330, "range": [280, 400], "isDefault": true, "note": "含米饭的盖饭，一份约 330g" }
-    ] },
+
+
+
+
     { "unit": "份", "match": ["烤冷面"], "portions": [
       { "label": "一份", "grams": 163, "range": [120, 220], "isDefault": true, "note": "一张冷面加蛋加肠" }
     ] },
@@ -413,6 +435,9 @@
     ] },
     { "unit": "勺", "match": ["盐", "食盐", "精盐"], "portions": [
       { "label": "一勺", "grams": 5, "range": [3, 8], "isDefault": true, "note": "一平勺约 5g，约等于 2000mg 钠" }
+    ] },
+    { "unit": "勺", "match": ["咖喱粉"], "portions": [
+      { "label": "一勺", "grams": 6, "range": [4, 10], "isDefault": true, "note": "一平勺咖喱粉约 6g；一份咖喱饭大约用两勺" }
     ] },
 
     { "unit": "串", "match": ["羊肉串", "烤羊肉串", "烤鸡翅", "烤肠"], "portions": [

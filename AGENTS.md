@@ -236,6 +236,15 @@ CRYPT_E_NO_REVOCATION_CHECK (0x80092012) - 吊销功能无法检查证书是否�
 13. **份量规则的唯一来源是 `data/foodPortions.json`**，不要在 `FoodItem` 里再放一份 `portions` ——
     两份必然漂移。`match` 是**子串匹配且先命中先赢**，所以特殊条目（「大包薯片」）
     必须排在通用条目（「薯片」）前面；插新规则时位置比内容更容易出错。
+    ⚠️ **排反了 = 那条规则永远走不到，而且看不出来**：旧闸门 ④b（有没有规则命中）和
+    ④d（note 写没写）**都是绿的**，只有克数是错的。2026-09-19 一天里咬了三次：
+    `一份鸡米花` 被单字「鸡」的泛化规则盖住（一直给 150g，专门写的 100g 从没生效）、
+    `一份猪脚烤肉饭`/`一份手撕鸡奥尔良烤肉拌饭` 被 `份[…烤肉饭…拌饭]=300g` 盖住、
+    `一份烤鸭饭` 被 `份[北京烤鸭,烤鸭…]=150g` 盖住（**整碗米饭丢了**）。
+    现在闸门有 **④b2** 专查这个：同一量词下若后面还有**更长（更具体）的词**能命中同一条食物、
+    且克数不同，就报出来并点名被挡住的是哪条。**新增/挪动份量规则后一定看这条有没有报。**
+    另外：**改 `match` 的原子性**也要留意 —— 词写错了（库里没这个名字）会被"死词"检查抓；
+    词对但位置错会被 ④b2 抓。两者都不是靠人眼看的。
 14. **剥前缀噪音时，长词必须排在短词前面**。`parse.ts` 的 `LEAD_NOISE` 里
     「吃了」要排在「吃」前、「喝完了」要排在「喝」前 —— 否则「晚上吃了一包薯片」会把
     「吃了」剥成「了」，`一包` 认不出来，最后悄悄退化成按分类兜底的估算值（量级直接错）。
@@ -433,7 +442,7 @@ python scripts/verify-subpath.py                                # 子路径点�
 ```bash
 npm run check:data        # 既有结构的数据还读得出来吗
 npm run smoke             # 真实浏览器里真的画出来了吗（5 个页面）
-npm run check:nutrition   # 食物库算术自洽吗 + 每条食物有没有份量规则
+npm run check:nutrition   # 食物库算术自洽吗 + 每条食物有没有份量规则 + 具体规则有没有被泛化规则挡住
 npm run check:reference   # 抄来的数值有没有台账；按配方估算的能不能重算回去
 npm test                  # 营养层与数据层语义对吗（无数据≠0、快照、数字只能来自一次乘法）
 npm run check:chunks      # 页面分包（食物库只许进 diet / index / takeout）—— ⚠️ 必须先构建
@@ -491,8 +500,8 @@ curl -s "https://orang1ver.github.io/yuanqi-ledger/sw.js?cb=$(date +%s)" | grep 
 | 周维度达标率 | `lib/weekly.ts` |
 | **睡眠与心情的周聚合** | `lib/wellness.ts` |
 | 体重计算（周均、距健康区间） | `lib/weight.ts` |
-| **食物库（243 条，按每 100g/ml）** | `data/foods.zh.json` |
-| **份量换算规则（135 条）** | `data/foodPortions.json` |
+| **食物库（249 条，按每 100g/ml）** | `data/foods.zh.json` |
+| **份量换算规则（142 条）** | `data/foodPortions.json` |
 | **档位反推（这条记录当时按哪一档算的）** | `lib/nutrition/tiers.ts` |
 | **「这个数不对？」入口（每条记录旁边）** | `app/components/diet/EntryFeedback.tsx` |
 | **AI 归因 / 反馈文本拼装（一个数字都不产生）** | `lib/ai/feedback.ts` |
@@ -510,7 +519,7 @@ curl -s "https://orang1ver.github.io/yuanqi-ledger/sw.js?cb=$(date +%s)" | grep 
 | **「帮我挑」prompt / 白名单 / 去数字** | `lib/ai/recommend.ts` |
 | **「帮我挑」入口（首页推荐卡）** | `app/components/today/WhatToEatCard.tsx` |
 | 营养层单测 | `lib/nutrition/core.test.ts` |
-| 食物库质检闸门 | `scripts/check-nutrition.mjs` |
+| 食物库质检闸门（六处破坏自证：`YQ_SELFTEST=1`） | `scripts/check-nutrition.mjs` |
 | 看一条口语输入怎么算的 | `npm run probe -- --text "晚上吃了一包薯片，一杯奶茶"` |
 | 设计系统（颜色/按钮/卡片） | `app/globals.css`（`--yq-*` 令牌）+ `README.md` |
 | 图标 / 启动图重新生成（含安卓那份） | `scripts/make-icons.py`（`npm run icons`） |
