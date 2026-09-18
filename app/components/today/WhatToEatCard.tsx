@@ -35,6 +35,7 @@ import type { TakeoutDish } from "@/lib/types";
 import { pickDishesForGaps, pickableDishes, type AiPick } from "@/lib/ai/recommend";
 import { estimateDish } from "@/lib/nutrition/menu";
 import { suggestForGaps, type Suggestion } from "@/lib/nutrition/recommend";
+import { PAGE_LABELS } from "@/lib/copy";
 import { useDayNutrition } from "../diet/useDayNutrition";
 
 /**
@@ -211,12 +212,12 @@ export function WhatToEatCard() {
 
       {dishes.length === 0 ? (
         <p className="yq-hint" style={{ marginTop: 10 }}>
-          菜单库还是空的 —— 把常点的店录进「菜单」，推荐会更贴你自己的口味。
+          菜单库还是空的 —— 把常点的店录进「{PAGE_LABELS.takeout}」，推荐会更贴你自己的口味。
         </p>
       ) : blindCount > 0 ? (
         <p className="yq-hint" style={{ marginTop: 10 }}>
           菜单库里还有 {blindCount} 道菜算不出成分，没参与上面的推荐 ——
-          去「菜单」给它们关联一下食物就行。
+          去「{PAGE_LABELS.takeout}」给它们关联一下食物就行。
         </p>
       ) : null}
 

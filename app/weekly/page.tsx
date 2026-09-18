@@ -14,6 +14,7 @@ import { calcNutritionTargets } from "@/lib/nutrition/targets";
 import type { NutritionTargets } from "@/lib/nutrition/types";
 import { readinessOfWeek } from "@/lib/weekly";
 import { SLEEP_REFERENCE_HOURS, weekWellness } from "@/lib/wellness";
+import { DISCLAIMER, HEALTHY_RANGE_NOTE } from "@/lib/copy";
 
 /**
  * 一周里每天的饮食质量分。
@@ -359,13 +360,13 @@ export default function WeeklyPage() {
                 ? "本周均值就在区间里。"
                 : `距${weightProgress.direction === "lose" ? "上沿" : "下沿"}还差 ${weightProgress.distanceKg} kg。`}
               <br />
-              这只是按 BMI 18.5~23.9 算的**参考区间**，不是给你定的目标 —— 该增该减看你自己。
+              {HEALTHY_RANGE_NOTE}
             </p>
           )}
         </section>
 
         <p className="yq-hint" style={{ textAlign: "center" }}>
-          数字都是估算与参考，不构成医学建议。身体有异常请找医生。
+          {DISCLAIMER}
         </p>
       </main>
       <BottomNav />

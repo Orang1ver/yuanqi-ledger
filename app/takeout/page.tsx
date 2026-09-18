@@ -1,6 +1,7 @@
 import { TakeoutLibrary } from "../components/takeout/TakeoutLibrary";
 import { BottomNav, PageHeader } from "../components/shell/BottomNav";
 import { SettingsButton } from "../components/shell/SettingsButton";
+import { PAGE_LABELS } from "@/lib/copy";
 
 /**
  * 菜单库页面。
@@ -12,7 +13,7 @@ export default function TakeoutPage() {
   return (
     <>
       <main className="yq-shell" style={{ flex: 1, paddingBottom: 20 }}>
-        <PageHeader title="菜单库" subtitle="你常点的店与菜，推荐的数据底座" action={<SettingsButton />} />
+        <PageHeader title={PAGE_LABELS.takeout} subtitle="你常点的店与菜，推荐的数据底座" action={<SettingsButton />} />
         <TakeoutLibrary />
       </main>
       <BottomNav />

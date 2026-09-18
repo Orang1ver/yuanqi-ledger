@@ -147,8 +147,10 @@ CRYPT_E_NO_REVOCATION_CHECK (0x80092012) - 吊销功能无法检查证书是否�
   **顺序写错就会覆盖用户数据。** 参考 `lib/storage/takeout.ts` 的 `seedTakeoutMockIfEmpty`。
 - 新增 localStorage 键时：
   - 必须用 `recipe.` 前缀 → 才会被备份导出/导入/清空覆盖
-  - `lib/storage/backup.ts` 的 `describeBackup` 是**子串硬编码**映射，**新键要补一行**，
-    否则导入预览看不到它
+  - `lib/storage/backup.ts` 的 `BACKUP_GROUPS` 是**子串硬编码**映射，**新键要补一行**，
+    否则导入预览看不到它（**应用元数据**与**快照**类的新键例外，见该文件头部注释）
+  - 「整份覆盖」导入是**唯一不可逆的操作**，它必须走 `pushImportUndo` 存快照 ——
+    这条路上出过事：原来只靠一个 `window.confirm` 确认，没有快照也没有撤销
   - 键名**不要**与既有键产生子串重叠（例如别叫 `recipe.takeoutMock.snapshot.v1`，
     会被 `has("takeoutMock")` 误判成菜单库）
 - 破坏性操作（删商家、改名合并、批量导入）之前先 `pushTakeoutUndo` 存快照。
@@ -373,6 +375,7 @@ curl -s "https://orang1ver.github.io/yuanqi-ledger/sw.js?cb=$(date +%s)" | grep 
 | 功能与技术栈 | `README.md` |
 | 各版本改了什么 | `CHANGELOG.md`（权威）、`lib/changelog.ts`（App 内展示） |
 | **localStorage 键名契约** | `lib/storage/keys.ts` |
+| **跨组件必须一致的文案（页面名 / 免责声明 / 健康区间说明）** | `lib/copy.ts`（⚠️ 刻意**不是**全量文案表） |
 | 数据读写 | `lib/storage/`（`io.ts` 原语、`health.ts`/`meals.ts`/`takeout.ts` 领域、`backup.ts` 备份） |
 | **久未备份提醒（阈值 / 静默期 / 何时该提醒）** | `lib/storage/backupReminder.ts` |
 | 健康计算（BMR/TDEE/目标） | `lib/health.ts` |

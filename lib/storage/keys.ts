@@ -54,6 +54,14 @@ export const KEYS = {
    * 键名与既有键无子串重叠，不会被 `has(...)` 误判。
    */
   backupReminder: "recipe.backupReminder.v1",
+  /**
+   * 「整份覆盖」导入之前的一份快照，给用户一次撤销的机会。
+   *
+   * ⚠️ 与 `takeoutUndo` 同一个设计：**单槽**而不是栈 —— 快照是整份数据，
+   * 多留几份会让备份文件明显变大，而用户真正需要的只是「哎我刚点错了」这一次。
+   * 同样按 `takeoutUndo` 的先例**不进** `describeBackup`（它是快照，不是用户记录）。
+   */
+  importUndo: "recipe.importUndo.v1",
 } as const;
 
 export type StorageKey = (typeof KEYS)[keyof typeof KEYS];

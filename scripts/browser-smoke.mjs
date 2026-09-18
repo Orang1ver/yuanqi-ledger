@@ -871,6 +871,199 @@ async function checkBackupReminder(page, baseUrl, failures) {
   failures.push(...problems.map((p) => `久未备份提醒：${p}`));
 }
 
+// ---------- 导入预览与「整份覆盖」的撤销 ----------
+
+/**
+ * 打开设置面板。
+ *
+ * 它按需动态 import（见 SettingsButton），点完要等它真的挂上来 ——
+ * 直接 sleep 一个拍脑袋的毫秒数在慢机器上会偶发失败。
+ */
+async function openSettings(page) {
+  const clicked = await evaluate(
+    page,
+    `(() => {
+      const b = [...document.querySelectorAll("button")].find((x) => x.innerText.includes("设置"));
+      if (!b) return false;
+      b.click();
+      return true;
+    })()`,
+  );
+  if (!clicked) return false;
+  for (let i = 0; i < 25; i++) {
+    const ready = await evaluate(page, `!!document.querySelector('input[type="file"]')`).catch(() => false);
+    if (ready) return true;
+    await sleep(200);
+  }
+  return false;
+}
+
+/**
+ * 导入这条路的安全网。
+ *
+ * 换掉的是原来那串嵌套 `window.confirm`：它在用户**还没看到这份备份里有什么**之前，
+ * 就让他做一个不可逆的选择（「整份覆盖」），而且没有快照、没有撤销。
+ *
+ * 四条断言：
+ *  ① 选定文件后出现预览面板，且**一次原生弹窗都没弹**；
+ *  ② 面板数出来的条数与备份内容一致；
+ *  ③ 「整份覆盖」要再确认一次，点了之后数据真的被替换、快照也真的落库；
+ *  ④ 撤销之后数据回到导入前的样子。
+ *
+ * ⚠️ 文件是用 `DataTransfer` 在页内造出来再派发 change 的 ——
+ * 不走 CDP 的 setFileInputFiles，因为那要求先往磁盘写一份临时文件。
+ * ⚠️ 前置状态**自己造**（地雷 18）：先塞一条 id 为 before 的记录，撤销时才认得出它。
+ */
+async function checkImportPreview(page, baseUrl, failures) {
+  const KEY_DIET = "recipe.dietLog.v1";
+  const KEY_UNDO = "recipe.importUndo.v1";
+  const BACKUP = JSON.stringify({
+    app: "元气账本",
+    version: 1,
+    exportedAt: "2026-09-01T10:00:00.000Z",
+    includesApiKey: false,
+    data: {
+      [KEY_DIET]: JSON.stringify([{ id: "imp1" }, { id: "imp2" }]),
+      "recipe.healthProfile.v1": JSON.stringify({ height: 170, weight: 60 }),
+    },
+  });
+
+  const problems = [];
+
+  await goto(page, `${baseUrl}/health/?imp0=${Date.now()}`);
+  await evaluate(
+    page,
+    `(() => {
+      localStorage.setItem("${KEY_DIET}", JSON.stringify([{ id: "before" }]));
+      localStorage.removeItem("${KEY_UNDO}");
+      // 数一数有没有人弹原生 confirm —— 这条直接钉住「不再用 window.confirm」
+      window.__confirmCalls = 0;
+      const orig = window.confirm;
+      window.confirm = function (...a) { window.__confirmCalls++; return orig.apply(window, a); };
+      return true;
+    })()`,
+  );
+
+  if (!(await openSettings(page))) {
+    failures.push("导入预览：打不开设置面板，「设置」按钮没找到或面板没挂上");
+    console.log("✗ 导入预览：打不开设置面板，检查没跑成");
+    return;
+  }
+
+  // ---------- ①② 选定文件 → 面板 ----------
+  const injected = await evaluate(
+    page,
+    `(async () => {
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+      const input = document.querySelector('input[type="file"]');
+      if (!input) return { fatal: "找不到文件选择框" };
+      const dt = new DataTransfer();
+      dt.items.add(new File([${JSON.stringify(BACKUP)}], "backup.json", { type: "application/json" }));
+      input.files = dt.files;
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+      await sleep(450);
+      const el = document.querySelector('[data-yq="import-preview"]');
+      return { shown: !!el, text: el ? el.innerText : "", confirms: window.__confirmCalls ?? -1 };
+    })()`,
+  );
+
+  if (injected?.fatal) problems.push(`导入预览：${injected.fatal}`);
+  else {
+    if (!injected.shown) problems.push("选定备份后没有出现预览面板");
+    if (injected.confirms !== 0) {
+      problems.push(`导入过程弹了 ${injected.confirms} 次原生 confirm —— 那正是这次要换掉的东西`);
+    }
+    if (injected.shown) {
+      if (!injected.text.includes("饮食日记")) problems.push("面板没列出「饮食日记」");
+      if (!injected.text.includes("2 条")) problems.push("面板没数出饮食日记的 2 条（预览条数必须与实际一致）");
+      if (!injected.text.includes("健康档案")) problems.push("面板没列出「健康档案」");
+      if (!injected.text.includes("2026-09-01")) problems.push("面板没显示导出时间");
+    }
+  }
+
+  // ---------- ③ 整份覆盖：二次确认 + 数据替换 + 快照 ----------
+  const overwrite = await evaluate(
+    page,
+    `(async () => {
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+      const find = (kw) => {
+        const el = document.querySelector('[data-yq="import-preview"]');
+        return el ? [...el.querySelectorAll("button")].find((b) => b.innerText.includes(kw)) : null;
+      };
+      const first = find("整份覆盖");
+      if (!first) return { clicked: false };
+      first.click();
+      await sleep(300);
+      const second = find("确认覆盖");
+      if (!second) return { clicked: true, hasSecond: false };
+      second.click();
+      await sleep(500);
+      const diet = JSON.parse(localStorage.getItem("${KEY_DIET}") || "[]");
+      return {
+        clicked: true,
+        hasSecond: true,
+        diet: diet.map((e) => e.id),
+        snap: localStorage.getItem("${KEY_UNDO}") !== null,
+      };
+    })()`,
+  );
+
+  if (!overwrite?.clicked) problems.push("面板上没有「整份覆盖」按钮");
+  else {
+    if (!overwrite.hasSecond) problems.push("「整份覆盖」没有二次确认 —— 点一下就直接替换全部数据");
+    else {
+      if (overwrite.diet.join(",") !== "imp1,imp2") {
+        problems.push(`覆盖导入之后饮食记录是 [${overwrite.diet}]，期望 [imp1,imp2]`);
+      }
+      if (!overwrite.snap) problems.push("覆盖导入没有留下快照 —— 用户没有退路");
+    }
+  }
+
+  // ---------- ④ 撤销 ----------
+  await sleep(1800); // 覆盖之后会 reload，等它落地
+  await goto(page, `${baseUrl}/health/?imp1=${Date.now()}`);
+
+  const openedAgain = await openSettings(page);
+  const undone = openedAgain
+    ? await evaluate(
+        page,
+        `(async () => {
+          const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+          const wrap = document.querySelector('[data-yq="import-undo"]');
+          if (!wrap) return { found: false };
+          const b = wrap.querySelector("button");
+          if (!b) return { found: false };
+          b.click();
+          await sleep(500);
+          const diet = JSON.parse(localStorage.getItem("${KEY_DIET}") || "[]");
+          return {
+            found: true,
+            diet: diet.map((e) => e.id),
+            snapGone: localStorage.getItem("${KEY_UNDO}") === null,
+          };
+        })()`,
+      )
+    : { found: false };
+
+  if (!openedAgain) problems.push("撤销那一步打不开设置面板");
+  else if (!undone.found) problems.push("覆盖导入之后没有出现「撤销这次导入」");
+  else {
+    if (undone.diet.join(",") !== "before") {
+      problems.push(`撤销之后饮食记录是 [${undone.diet}]，期望回到 [before]`);
+    }
+    if (!undone.snapGone) problems.push("撤销之后快照还在 —— 应当只能撤一次");
+  }
+
+  const ok = problems.length === 0;
+  console.log(
+    `${ok ? "✓" : "✗"} 导入预览：选定文件后${injected?.shown ? "出现面板" : "没出现面板"}` +
+      `（原生弹窗 ${injected?.confirms ?? "?"} 次）；整份覆盖${overwrite?.hasSecond ? "要二次确认" : "没有二次确认"}` +
+      `，数据变成 [${overwrite?.diet ?? "?"}]、快照${overwrite?.snap ? "有" : "没有"}；` +
+      `撤销后回到 [${undone?.diet ?? "?"}]`,
+  );
+  failures.push(...problems.map((p) => (p.startsWith("导入预览") ? p : `导入预览：${p}`)));
+}
+
 async function checkAiPick(page, baseUrl, failures) {
   const DISH_OK = "番茄蛋汤";
   const DISH_FAKE = "凭空捏造的菜";
@@ -1328,6 +1521,9 @@ try {
 
   // 这一条会动备份提醒的状态、并真的触发一次下载，同样放在只读断言之后
   await checkBackupReminder(page, BASE_URL, failures);
+
+  // 这一条会**替换**饮食记录（前置自己造），必须排在所有依赖它的检查之后
+  await checkImportPreview(page, BASE_URL, failures);
 
   // 这一条会**覆盖**菜单库与饮食记录（前置自己造），必须排在最后
   await checkAiPick(page, BASE_URL, failures);

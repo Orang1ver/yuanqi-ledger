@@ -17,6 +17,15 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.9.0",
+    date: "2026-09-19",
+    highlights: [
+      "导入备份前先给你看「这份备份里有什么」，两个按钮各自写明会发生什么",
+      "「整份覆盖」现在会先存一份快照 —— 点错了可以撤销一次",
+      "修掉周报页上那几个多余的星号；底部导航的「菜单」统一叫「菜单库」",
+    ],
+  },
+  {
     version: "0.8.0",
     date: "2026-09-19",
     highlights: [

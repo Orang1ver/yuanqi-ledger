@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { PAGE_LABELS, PAGE_ROUTES } from "@/lib/copy";
 
 /**
  * 底部导航。
@@ -11,13 +12,12 @@ import { usePathname } from "next/navigation";
  * 这个坑在本项目的历史上出现过，`no-html-link-for-pages` 那条 lint 报错就是它，别忽略。
  */
 
-const TABS = [
-  { href: "/", label: "今天", icon: "◉" },
-  { href: "/diet/", label: "饮食", icon: "◈" },
-  { href: "/health/", label: "健康", icon: "♥" },
-  { href: "/takeout/", label: "菜单", icon: "▤" },
-  { href: "/weekly/", label: "周报", icon: "▦" },
-] as const;
+/*
+ * 页面名与路由都来自 lib/copy.ts —— 同一个页面在导航、页头、提示语里必须是同一个名字。
+ * 这里原来写死的是「菜单」，而页头写的是「菜单库」、提示语又让用户「去「菜单」关联一下」，
+ * 他照着去找的是一个叫「菜单库」的页面。
+ */
+const TABS = PAGE_ROUTES;
 
 export function BottomNav() {
   const pathname = usePathname() || "/";
@@ -60,7 +60,7 @@ export function BottomNav() {
               }}
             >
               <span style={{ fontSize: 17, lineHeight: 1 }}>{t.icon}</span>
-              {t.label}
+              {PAGE_LABELS[t.key]}
             </Link>
           );
         })}

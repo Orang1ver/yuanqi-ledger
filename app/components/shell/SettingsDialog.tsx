@@ -8,20 +8,24 @@ import { recentChanges } from "@/lib/changelog";
 import { THEME_OPTIONS, loadThemeChoice, saveThemeChoice, type ThemeChoice } from "@/lib/theme";
 import {
   clearAllData,
-  describeBackup,
+  describeBackupDetail,
   downloadBackup,
   importBackup,
-  looksLikeLegacyBackup,
+  peekImportUndo,
+  undoImport,
+  type BackupDetail,
   type ImportMode,
 } from "@/lib/storage/backup";
 import { describeBackupStatus, shouldRemindBackup } from "@/lib/storage/backupReminder";
+import { ImportPreview } from "./ImportPreview";
 
 /**
  * 设置面板。
  *
  * 这里是「数据不丢」的最后一道闸门，所以备份区做得比别处啰嗦：
  * - 导出支持「含 / 不含 AI Key」——分享配置给别人时不该连钥匙一起给
- * - 导入区分「合并」与「覆盖」两种模式，并在点下去之前把会覆盖什么讲清楚
+ * - 导入先看「这份备份里有什么」再决定怎么导，两个按钮各自写明后果（见 ImportPreview），
+ *   而且「整份覆盖」会先存快照、事后能撤销一次
  * - 清空需要二次确认，且明确告诉用户"先导出再清"
  *
  * ⚠️ 数字输入用**字符串 state**（见 cup 输入框）：用 value={number} + onChange(Number(v)||0)
@@ -30,6 +34,11 @@ import { describeBackupStatus, shouldRemindBackup } from "@/lib/storage/backupRe
 
 const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || "0.0.0";
 const BUILD_TIME = process.env.NEXT_PUBLIC_BUILD_TIME || "";
+
+/** 选好文件、还没确认之前的那份待导入内容 */
+type PendingImport =
+  | { kind: "ok"; text: string; detail: Extract<BackupDetail, { ok: true }> }
+  | { kind: "bad"; reason: string };
 
 export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const [prefs, setPrefs] = useState(() => loadPrefs());
@@ -50,11 +59,16 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
     text: describeBackupStatus(),
     remind: shouldRemindBackup(),
   }));
-  /** 导出 / 导入之后重读一次，否则状态行会停在旧值上，看起来像按钮没生效 */
-  const refreshBackupStatus = () =>
-    setBackupStatus({ text: describeBackupStatus(), remind: shouldRemindBackup() });
   const [confirmClear, setConfirmClear] = useState(false);
+  const [pending, setPending] = useState<PendingImport | null>(null);
+  /** 「整份覆盖」之前有没有快照可撤 —— 它决定那个按钮出不出现 */
+  const [undoable, setUndoable] = useState(() => peekImportUndo() !== null);
   const fileRef = useRef<HTMLInputElement>(null);
+  /** 导出 / 导入之后重读一次，否则状态行会停在旧值上，看起来像按钮没生效 */
+  const refreshBackupStatus = () => {
+    setBackupStatus({ text: describeBackupStatus(), remind: shouldRemindBackup() });
+    setUndoable(peekImportUndo() !== null);
+  };
 
   function applyCup(raw: string) {
     setCupDraft(raw);
@@ -72,39 +86,55 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
     emitDataChanged();
   }
 
+  /**
+   * 选完文件先**只读出来、不动任何数据**，交给下面的预览面板。
+   *
+   * 原来这里直接弹一串 `window.confirm` 问「覆盖还是合并」——
+   * 那是在用户**还没看到这份备份里有什么**之前，就让他做一个不可逆的选择。
+   */
   function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
       const text = String(reader.result ?? "");
-      const preview = describeBackup(text);
-      const legacy = looksLikeLegacyBackup(text);
-      const mode: ImportMode | null = window.confirm(
-        `这份备份包含：${preview}\n${legacy ? "（来自更早的版本，可以直接用）\n" : ""}\n` +
-          `点「确定」= 覆盖导入（整份替换，适合换设备迁移）\n点「取消」= 合并导入（只补本地没有的，适合导入别人的配置）`,
-      )
-        ? "overwrite"
-        : window.confirm("要合并导入吗？（只写入本地还不存在的项，不会覆盖你现有数据）")
-          ? "merge"
-          : null;
-      if (!mode) return;
-      try {
-        const r = importBackup(text, mode);
-        setMsg(
-          `导入完成：写入 ${r.keys} 项` +
-            (r.skipped ? `，跳过 ${r.skipped} 项（本地已有，合并模式不覆盖）` : ""),
-        );
-        if (mode === "overwrite") setTimeout(() => window.location.reload(), 900);
-        // 覆盖导入会把备份里的「上次备份时间」一起带进来，状态行要跟着变
-        refreshBackupStatus();
-      } catch (err) {
-        setMsg(err instanceof Error ? err.message : "导入失败");
-      }
+      const detail = describeBackupDetail(text);
+      setMsg("");
+      // 解析不了也进面板 —— 把原因摆出来，比弹一个只有「确定」的框强
+      setPending(detail.ok ? { kind: "ok", text, detail } : { kind: "bad", reason: detail.reason });
     };
     reader.readAsText(file);
     // 允许重复选同一个文件
     e.target.value = "";
+  }
+
+  function confirmImport(mode: ImportMode) {
+    if (!pending || pending.kind !== "ok") return;
+    try {
+      const r = importBackup(pending.text, mode);
+      setMsg(
+        `导入完成：写入 ${r.keys} 项` +
+          (r.skipped ? `，跳过 ${r.skipped} 项（本地已有，合并模式不覆盖）` : ""),
+      );
+      setPending(null);
+      refreshBackupStatus();
+      /*
+       * 覆盖之后**必须重载**：内存里那些 hook 还拿着导入**之前**的数据，
+       * 用户接着打卡或记饮食就会把旧值写回去，把刚导入的东西冲掉。
+       * 而快照已经落在 localStorage 里，重载后「撤销这次导入」会自动出现 —— 所以有退路。
+       */
+      if (mode === "overwrite") setTimeout(() => window.location.reload(), 1200);
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : "导入失败");
+    }
+  }
+
+  function onUndoImport() {
+    const n = undoImport();
+    setMsg(n ? `已撤销，恢复了 ${n} 项数据。` : "没有可撤销的导入了。");
+    refreshBackupStatus();
+    // 同覆盖导入：内存里的状态是「撤销之前」的，必须重载才准确
+    if (n) setTimeout(() => window.location.reload(), 1200);
   }
 
   return (
@@ -252,10 +282,34 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
               style={{ display: "none" }}
             />
           </div>
+          {pending?.kind === "bad" && (
+            <p className="yq-hint" style={{ marginTop: 10, color: "var(--yq-danger)" }}>
+              这份文件用不了：{pending.reason}
+            </p>
+          )}
+          {pending?.kind === "ok" && (
+            <ImportPreview
+              detail={pending.detail}
+              onCancel={() => setPending(null)}
+              onConfirm={confirmImport}
+            />
+          )}
+
           {msg && (
             <p className="yq-hint" style={{ marginTop: 8, color: "var(--yq-primary-ink)" }}>
               {msg}
             </p>
+          )}
+
+          {undoable && (
+            <div style={{ marginTop: 10 }} data-yq="import-undo">
+              <button className="yq-btn yq-btn-sm" onClick={onUndoImport}>
+                撤销这次导入
+              </button>
+              <p className="yq-hint" style={{ marginTop: 4 }}>
+                把数据恢复成上次「整份覆盖」之前的样子。快照只留最近一份，所以只能撤一次。
+              </p>
+            </div>
           )}
         </section>
 
