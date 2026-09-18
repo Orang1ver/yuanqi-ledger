@@ -275,6 +275,26 @@ describe("份量解析", () => {
     assert.match(r.portion.note ?? "", /熟重/);
   });
 
+  it("⚠ 干重食物不许拿熟重的克数：一碗挂面 = 80g 干面，不是 250g 熟面", () => {
+    // 真踩过：挂面的别名「干面条」含「面条」，于是命中了 `碗[面条] = 250g` 那条熟重规则，
+    // 「一碗挂面」算出 865 kcal（真实约 280）—— 高估三倍，而界面上看不出任何异常。
+    // 同一个错在库里躺着三条：挂面、米粉（干）、粉丝（干）。
+    // 克数是关键断言：规则一旦被删或被重排到通用规则后面，这里会退成 250，直接红。
+    for (const id of ["noodles-dry", "rice-noodle-dry", "vermicelli-dry"]) {
+      const food = foodById(id)!;
+      const r = resolvePortion(table, food, "碗")!;
+      assert.equal(r.grams, 80, `${food.name} 应当按干重给 80g，实际 ${r.grams}g`);
+      assert.match(r.portion.note ?? "", /按干/, `${food.name} 的口径必须写明是干重`);
+      const kcal = (food.kcal * r.grams) / 100;
+      assert.ok(kcal < 400, `${food.name} 一碗算出 ${kcal.toFixed(0)} kcal，量级明显偏高`);
+    }
+  });
+
+  it("熟重的主食不受干重规则影响，仍是 250g", () => {
+    assert.equal(resolvePortion(table, foodById("noodles-cooked")!, "碗")!.grams, 250);
+    assert.equal(resolvePortion(table, foodById("rice-noodle-cooked")!, "碗")!.grams, 250);
+  });
+
   it("量词对不上就返回 null，绝不猜一个数字出来", () => {
     assert.equal(resolvePortion(table, foodById("rice-cooked")!, "勺"), null);
     assert.equal(resolvePortion(table, foodById("shupian")!, "桶"), null);
@@ -340,6 +360,20 @@ describe("浅解析", () => {
     assert.equal(stripLeadNoise("一杯奶茶"), "一杯奶茶");
     // 只剥动词「吃了」，「个」是量词，必须留着 —— 剥掉它会让份量表白写（见「量词不许被前缀噪音吃掉」）
     assert.equal(stripLeadNoise("今天下午吃了个苹果"), "个苹果");
+  });
+
+  it("烹饪动词 + 了 也要剥掉，否则份量会整个丢掉", () => {
+    // 「下了一碗挂面」若不剥「下了」，整段会被当成食物名去模糊检索 ——
+    // 结果是配到了食物但**份量丢了**，退化成分类兜底的 200g（692 kcal）。
+    assert.equal(stripLeadNoise("下了一碗挂面"), "一碗挂面");
+    assert.equal(stripLeadNoise("煮了一碗面"), "一碗面");
+    assert.equal(stripLeadNoise("炒了一盘青菜"), "一盘青菜");
+  });
+
+  it("⚠ 剥动词时不许顺手把量词剥掉", () => {
+    // 地雷 19 的另一面：噪音表只放动词，「个」必须留给 FRAGMENT_RE 去认。
+    assert.equal(stripLeadNoise("下了个蛋"), "个蛋");
+    assert.equal(parseFragment("下了个蛋").unit, "个");
   });
 
   it("切段认得中英文逗号、顿号与空白", () => {

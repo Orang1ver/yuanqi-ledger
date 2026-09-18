@@ -112,9 +112,26 @@ if (SELFTEST) {
     source: "自证用（只在这个模式下存在）",
   });
 
+  /*
+   * 第三处破坏，喂给「干重食物的份量口径」那条检查。
+   *
+   * 做法是**抽掉碗的干重专门规则**，让「挂面」重新掉回 `碗[面条] = 250g` 那条熟重规则。
+   * 刻意只抽「碗」、留着「份」：两条都抽的话，粉丝（干）会变成"一条规则都命中不了"，
+   * 于是 ④b 先报出来 —— 那测到的是 ④b，不是 ④c（地雷 23：破坏必须走到被测的那一层）。
+   */
+  const dryBowlIdx = PORTIONS.rules.findIndex(
+    (r) => r.unit === "碗" && (r.match ?? []).includes("干米粉"),
+  );
+  if (dryBowlIdx < 0) {
+    console.error("✗ 自证失败：找不到碗的干重专门规则 —— 破坏点根本没落到位");
+    process.exit(2);
+  }
+  PORTIONS.rules.splice(dryBowlIdx, 1);
+
   sabotaged =
     `把「${victim.name}」的脂肪从 34 改成 3.4；` +
-    "并塞进一条没有任何份量规则能命中的食物「自证用孤儿食物」";
+    "并塞进一条没有任何份量规则能命中的食物「自证用孤儿食物」；" +
+    "再抽掉碗的干重专门规则，让「挂面」掉回熟重的 250g";
 }
 
 // ---------- 收集问题 ----------
@@ -283,6 +300,55 @@ for (const f of LIBRARY.items ?? []) {
   }
 }
 
+// ---------- ④c 干重食物不许用熟重的克数 ----------
+
+/*
+ * 「挂面」是**干重**数据（346 kcal/100g），而份量表里 `碗[面条] = 250g` 是**熟重**。
+ * 挂面的别名「干面条」含「面条」，于是它命中了那条熟重规则 ——
+ * 「一碗挂面」算出 865 kcal，真实约 280，**高估三倍**，而且界面上看不出任何异常。
+ * 同一个错在库里躺着三条：挂面、米粉（干）、粉丝（干）。
+ *
+ * ④b 那条抓不到它：那条只问"有没有规则命中"，不问"命中的规则口径对不对" ——
+ * 命中得越"成功"，错得越彻底。
+ *
+ * 判据是**口径**而不是克数大小：80g 和 250g 谁对，光看数字判不出来，只有 note 知道。
+ * 所以要求干重食物的每条命中规则，默认档的 note 必须写明是干重（含「干重」或「按干」）。
+ */
+const isDryFood = (f) =>
+  /干重/.test(f.source ?? "") ||
+  /（干）|\(干\)/.test(f.name ?? "") ||
+  (f.alias ?? []).some((a) => /（干）|\(干\)/.test(a ?? ""));
+
+const portionUnits = [...new Set((PORTIONS.rules ?? []).map((r) => r.unit).filter(Boolean))];
+let dryCombos = 0;
+
+for (const f of LIBRARY.items ?? []) {
+  if (!isDryFood(f)) continue;
+  const names = [f.name, ...(f.alias ?? [])].filter(Boolean);
+
+  for (const unit of portionUnits) {
+    // 与 core.ts 的 resolvePortion 保持同一个顺序：同一量词下先命中先取
+    const rule = (PORTIONS.rules ?? []).find(
+      (r) => r.unit === unit && (r.match ?? []).some((m) => names.some((n) => n.includes(m))),
+    );
+    if (!rule) continue;
+
+    const portion = rule.portions.find((p) => p.isDefault) ?? rule.portions[0];
+    dryCombos++;
+
+    if (!/干重|按干/.test(portion?.note ?? "")) {
+      const grams = portion?.grams ?? 0;
+      fail(
+        `${f.id} (${f.name}) · 量词「${unit}」`,
+        `干重数据（${f.kcal} kcal/100g）命中了熟重口径的规则「${portion?.label ?? "?"}」` +
+          `：${grams}g → ${((f.kcal * grams) / 100).toFixed(0)} kcal（note：${portion?.note ?? "未注明"}）。` +
+          "干面 / 干粉煮熟或泡发后重量翻几倍，按熟重克数算会高估数倍 —— " +
+          "修法是在这条通用规则**前面**插一条按干重给克数的专门规则，note 里写明「按干…」",
+      );
+    }
+  }
+}
+
 // ---------- ⑤ 体积预算 ----------
 
 const rawBytes = foodsFile.raw.length;
@@ -316,6 +382,7 @@ function report() {
     `\n闭合校验：检查了 ${checked} 条，跳过 ${skipped} 条` +
       `（酒类含乙醇、热量低于 ${CLOSURE_KCAL_FLOOR} kcal 的条目算式不适用）`,
   );
+  console.log(`干重口径：检查了 ${dryCombos} 个「干重食物 × 量词」组合 —— 口径必须写明是干重`);
 
   if (!problems.length) {
     console.log("\n✓ 没发现问题。");
@@ -335,16 +402,16 @@ function report() {
 const failed = report();
 
 if (SELFTEST) {
-  // 两处破坏各对应一条检查，两条都必须在 problems 里出现才算自证通过。
+  // 三处破坏各对应一条检查，三条都必须在 problems 里出现才算自证通过。
   // 只断言"有问题"是不够的：那样其中一条检查坏掉了也照样绿。
-  const expectKinds = ["闭合校验不过", "没有任何份量规则命中"];
+  const expectKinds = ["闭合校验不过", "没有任何份量规则命中", "干重数据"];
   const missingKinds = expectKinds.filter((k) => !problems.some((p) => p.msg.includes(k)));
   if (missingKinds.length) {
     console.error(`\n✗ 自证失败：故意改坏了数据，这些检查却没拦下 —— ${missingKinds.join("、")}。`);
     console.error("  永远通过的闸门等于没有闸门，先去修那条检查。");
     process.exit(2);
   }
-  console.log(`\n✓ 自证通过：两处破坏都被对应的检查拦下了（共 ${problems.length} 个问题）。`);
+  console.log(`\n✓ 自证通过：三处破坏都被对应的检查拦下了（共 ${problems.length} 个问题）。`);
   console.log("  永远通过的闸门等于没有闸门，所以这一步不能省。");
   process.exit(0);
 }

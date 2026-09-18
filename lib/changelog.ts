@@ -17,6 +17,15 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.7.1",
+    date: "2026-09-18",
+    highlights: [
+      "修掉「一碗挂面 = 865 kcal」：挂面是干重数据，以前按熟面的克数算，高估了三倍",
+      "米粉（干）、粉丝（干）是同一个错，一并修了",
+      "「下了一碗挂面」不再丢份量（以前会掉进「按分类拍脑袋估」那条路）",
+    ],
+  },
+  {
     version: "0.7.0",
     date: "2026-09-18",
     highlights: [

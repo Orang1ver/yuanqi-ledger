@@ -108,8 +108,11 @@
       { "label": "一碗", "grams": 180, "range": [150, 250], "isDefault": true, "note": "约一两半米，指熟重" },
       { "label": "大碗", "grams": 250, "range": [220, 300] }
     ] },
-    { "unit": "碗", "match": ["面条", "米线", "米粉", "凉皮", "粉丝"], "portions": [
-      { "label": "一碗", "grams": 250, "range": [150, 350], "isDefault": true }
+    { "unit": "碗", "match": ["挂面", "干面条", "面条（干）", "米粉（干）", "干米粉", "粉丝（干）", "粉条", "红薯粉丝"], "portions": [
+      { "label": "一碗", "grams": 80, "range": [60, 120], "isDefault": true, "note": "按干重算（干面条 / 干米粉 / 干粉丝），煮熟或泡发后约 240g" }
+    ] },
+    { "unit": "碗", "match": ["面条", "米线", "米粉", "凉皮"], "portions": [
+      { "label": "一碗", "grams": 250, "range": [150, 350], "isDefault": true, "note": "指煮熟 / 泡发后的重量" }
     ] },
     { "unit": "碗", "match": ["粥", "汤"], "portions": [
       { "label": "一碗", "grams": 300, "range": [200, 400], "isDefault": true }
@@ -125,8 +128,11 @@
       { "label": "一盘", "grams": 250, "range": [150, 400], "isDefault": true }
     ] },
 
+    { "unit": "份", "match": ["挂面", "干面条", "面条（干）", "米粉（干）", "干米粉", "粉丝（干）", "粉条", "红薯粉丝"], "portions": [
+      { "label": "一份", "grams": 80, "range": [60, 120], "isDefault": true, "note": "按干重算（干面条 / 干米粉 / 干粉丝），煮熟或泡发后约 240g" }
+    ] },
     { "unit": "份", "match": ["米饭", "面条", "米线", "凉皮"], "portions": [
-      { "label": "一份", "grams": 200, "range": [150, 300], "isDefault": true }
+      { "label": "一份", "grams": 200, "range": [150, 300], "isDefault": true, "note": "指煮熟 / 泡发后的重量" }
     ] },
     { "unit": "份", "match": ["饺子", "馄饨", "云吞"], "portions": [
       { "label": "一份", "grams": 200, "range": [150, 300], "isDefault": true }
