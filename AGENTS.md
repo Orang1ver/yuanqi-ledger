@@ -59,11 +59,32 @@ git -C "$REPO" worktree remove "$DEV" && git -C "$REPO" branch -d feat/<名字>
 - **装 JDK / Android SDK / 其他大体积依赖，一律装到 D 盘**（系统盘空间紧，用户明确要求）。
   落到具体做法：`winget install --location "D:\..."`、
   `sdkmanager --sdk_root=D:\Android\Sdk`、`JAVA_HOME` / `ANDROID_HOME` 指向 D 盘对应目录。
-- 这台机器的当前状态（2026-09-19 探过）：
-  - `adb` **有** —— 但它是 WinGet 单独装的 platform-tools，
-    上级目录里**没有** `platforms/`、`build-tools/`、`cmdline-tools/`，**不是完整 SDK**
-  - **JDK 没有**（`JAVA_HOME` 空、`Program Files\Java` 不存在、没装 Android Studio）
-  - 所以**打安卓 APK 之前要先补这两样**（约 4~6GB）
+- **这台机器的当前状态（2026-09-19 探过并装好了）**：
+  - `D:\Android\jdk-21\` —— Temurin 21（**zip 解压，没走安装器**，位置完全可控）
+  - `D:\Android\Sdk\platforms\android-35\`、`build-tools\34.0.0\`、`platform-tools\`、`licenses\`
+  - **故意没有 `cmdline-tools`**：它只有 sdkmanager/avdmanager，而 sdkmanager 的仓库索引在
+    `dl.google.com` 上，这台机器**直连不通**（本机常年没开代理）。目录是手工铺的，用不上它。
+  - 密钥在 `D:\Android\keystore\yuanqi-release.jks`，密码在 `android/keystore.properties`，
+    **两个都不进 git**（仓库是公开的，签名密钥进了 git 就永远换不掉）。
+  - 重装/换机器：`scripts/android/setup-sdk.ps1`（从腾讯镜像铺 SDK）+
+    `scripts/android/build-apk.ps1`（构建并验产物）。两个脚本的注释里写清了版本矩阵的由来。
+
+### 版本矩阵：改之前先读这张表
+
+```
+AGP 8.6.1  +  Gradle 8.11.1  +  compileSdk 35  +  build-tools 34.0.0
+```
+
+这四个**必须一起动**，因为镜像上**没有 build-tools 35**（只有 r33 / r34），而：
+
+- AGP 8.7+ **硬性要求** build-tools 35.0.0 ⇒ 上限被钉在 AGP 8.6.x
+- compileSdk 35 需要 AGP ≥ 8.6 ⇒ 下限也是 8.6
+- AGP 8.6 需要 Gradle ≥ 8.7 ⇒ 用镜像上有的 8.11.1
+
+Capacitor 自己的两个子模块（`:capacitor-android` 在 `node_modules` 里、
+`:capacitor-cordova-android-plugins` 是生成的）**各自硬编码 AGP 8.7.2 并从 `google()` 拉**。
+`node_modules` 不能改（会被重装），所以 `android/build.gradle` 里为**所有子工程**
+前置阿里云镜像并把 AGP 压回 8.6.1 —— 那段注释别删。
 
 ---
 
@@ -334,6 +355,48 @@ CRYPT_E_NO_REVOCATION_CHECK (0x80092012) - 吊销功能无法检查证书是否�
     需要类型就写 `.ts` 并用 `scripts/run-ts.mjs` 跑。
     要进仓库的脚本（如 `scripts/fetch-food-table.mjs`）更要在提交前跑一次。
 
+### 安卓壳 / PowerShell / Gradle 的坑（2026-09-19 一次性踩齐）
+
+这一组和别的地雷不同：**它们不会让命令失败，只会让产物悄悄不对**，所以单独列。
+
+29. **Windows PowerShell 5.1 读 UTF-8 的方式是两面的，两边都咬人。**
+    - **`.ps1` 文件本身**：无 BOM 时按 ANSI（本机 GBK）解码，中文注释里的字节会把**换行吃掉**
+      （实测 69 行被读成 60 行），于是括号配对错位，报一个指不到真因的
+      `Unexpected token ')'`。⇒ **本仓库的 `.ps1` 一律存成 UTF-8 with BOM**，
+      改完确认前三字节是 `EF BB BF`。
+      ⚠️ **`edit` / `write` 工具重写文件会丢掉 BOM** —— 每次改完 `.ps1` 都要补回来：
+      ```powershell
+      $b = [System.IO.File]::ReadAllBytes($p)
+      if (-not ($b[0] -eq 0xEF -and $b[1] -eq 0xBB -and $b[2] -eq 0xBF)) {
+        [System.IO.File]::WriteAllBytes($p, [byte[]]([byte[]](0xEF,0xBB,0xBF) + $b))
+      }
+      ```
+    - **`.ps1` 去读别的文件**：`Get-Content -Raw` 也按 ANSI 解码。`package.json` 是
+      UTF-8 **无 BOM**（npm 惯例）且里面有中文 ⇒ 读成乱码、`ConvertFrom-Json` 直接抛错，
+      而**赋值失败的变量是 `$null`** —— 版本号悄悄变成空字符串，一路写进 `sw.js` 的缓存名。
+      ⇒ 读仓库里的文本文件一律显式指定编码：
+      `[System.IO.File]::ReadAllText($path, [System.Text.Encoding]::UTF8)`。
+30. **Gradle 构建脚本里注释只用 ASCII。** Gradle 读构建脚本也走平台默认编码（本机 GBK），
+    和地雷 29 是同一个成因。`android/build.gradle`、`android/app/build.gradle`、
+    `gradle-wrapper.properties` 里的注释**故意写成英文**，别"顺手翻译成中文"。
+    中文放 `strings.xml`（UTF-8 XML，没问题）和仓库里的文档里。
+31. **XML 注释里不能出现 `--`。** 我在 `strings.xml` 里写 `-- that is why` 当破折号，
+    aapt2 报 `注释中不允许出现字符串 "--"`。**双连字符在 XML 里是非法的**，换 `—` 或改写法。
+32. **`| Select-Object -First N` 会掐断上游命令。** 实测
+    `& apksigner ... | Select-Object -First 3` 让一次**成功**的验签变成非零退出码
+    （Select 拿到量就停上游，命令被中断）。凡是靠 `$LASTEXITCODE` 判断成败的地方，
+    **先把整份输出收进变量，再看退出码，最后才截取显示**。
+33. **新增顶层目录后要看 eslint 的基线。** 加 `android/` 之后 `npx eslint .` 从 0 错变成
+    **22 错 4384 警** —— 它在爬 `android/app/src/main/assets/public` 里那份 **cap sync 拷贝进去的
+    Web 构建产物**。`eslint.config.mjs` 的 `globalIgnores` 里补了 `android/**` 与 `dist/**`。
+    ⚠️ 这类"构建产物被 lint 到"的坑，判据是**基线数字**：这个项目基线是 0 错 0 警，
+    看到几百条就要先问"我是不是把产物目录引进来了"，而不是去逐条修。
+34. **改了 `make-icons.py` 或主题色之后，别忘了安卓那份图标要重新铺。**
+    它写在 `android/app/src/main/res/` 下，`cap sync` **不会**动它们
+    （sync 只管 `assets/public`）。重跑 `python scripts/make-icons.py` 再打包。
+    出图前脚本会自证环是居中的 —— 那个断言修的是一个**真实存在过的 bug**
+    （maskable 图标的环偏在左上角、偏了画布的 26.8%）。
+
 ---
 
 ## 5. 验证要求（用户要求讲清"怎么验证的"）
@@ -430,7 +493,13 @@ curl -s "https://orang1ver.github.io/yuanqi-ledger/sw.js?cb=$(date +%s)" | grep 
 | 食物库质检闸门 | `scripts/check-nutrition.mjs` |
 | 看一条口语输入怎么算的 | `npm run probe -- --text "晚上吃了一包薯片，一杯奶茶"` |
 | 设计系统（颜色/按钮/卡片） | `app/globals.css`（`--yq-*` 令牌）+ `README.md` |
-| 图标 / 启动图重新生成 | `scripts/make-icons.py` |
+| 图标 / 启动图重新生成（含安卓那份） | `scripts/make-icons.py`（`npm run icons`） |
+| **安卓 SDK 装到 D 盘（换机器 / 重装时跑它）** | `scripts/android/setup-sdk.ps1` |
+| **打安卓 APK（构建 + 同步 + 打包 + 验产物）** | `scripts/android/build-apk.ps1`（`npm run android:apk`） |
+| **安卓壳的配置（appId / webDir / appName 为什么是 ASCII）** | `capacitor.config.ts` |
+| **安卓工程的版本矩阵与镜像覆盖（那段注释别删）** | `android/build.gradle`、`android/app/build.gradle` |
+| 签名密钥（**不在仓库里**） | `D:\Android\keystore\yuanqi-release.jks` + `android/keystore.properties` |
+| 打好的 APK | `dist/yuanqi-ledger-<版本>.apk`（gitignored） |
 | 子路径自检 | `scripts/verify-subpath.py` |
 | 线上站点 | <https://orang1ver.github.io/yuanqi-ledger/>（`gh-pages` 分支，`node scripts/deploy.mjs` 发布） |
 | **分支纪律（1.0.0 起）** | 本文件第 1 节「分支纪律」 |

@@ -402,6 +402,24 @@
 
 ## 十、分版本规划（一眼看顺序）
 
+### ✅ 0.13.0 · 安卓 App（Capacitor 壳）——已完成
+
+用户要求「1.0.0 之前把安卓 App 做好」。做法是**只加一层壳**，不给 Web 那一半加功能：
+
+- Capacitor 7 + `webDir: "out"`，`appId = com.orang1ver.yuanqiledger`，桌面名「元气账本」
+- `versionName` 直接读 `package.json`（不手写第二个版本号），
+  `versionCode = major*10000 + minor*100 + patch`
+- 签名密钥放**仓库外**（`D:\Android\keystore`），`keystore.properties` gitignored
+- `scripts/android/setup-sdk.ps1` + `build-apk.ps1` 把「装工具链」和「打包并验产物」变成两条命令
+
+⚠️ **本机网络决定了整套版本矩阵**（换机器先读 `AGENTS.md` 第 1 节）：
+`dl.google.com` 直连不通，SDK 从腾讯镜像手工铺、依赖走阿里云镜像；
+镜像上**没有 build-tools 35**，于是 `AGP 8.6.1 + Gradle 8.11.1 + compileSdk 35 + build-tools 34.0.0`
+四个一起被钉死。
+
+**iOS**：不需要另做一个包 —— iPhone 上就是"添加到主屏幕"的 PWA，安装引导与更新机制都是现成的。
+要上 App Store 得有 Mac + Xcode，不在这一版范围内。
+
 | 版本 | 内容 | 类型 |
 |---|---|---|
 | ~~0.4.1~~ | C1 孤儿测试挂入 + C2/C3 文档同步（已落在 `main`，**不单独发版本**，理由见第零节） | — |
@@ -421,7 +439,8 @@
 | **0.10.0** ✅ | **P6.1 第二批（续）**：5 条原料 + 5 道成品菜 + 台账 `code` 语义修正 + 取数工具 | MINOR |
 | **0.11.0** ✅ | **安卓「装到桌面」提示**（补上一个真缺口：Chrome 76 起不再自动弹）+ manifest 补 `categories` | MINOR |
 | **0.12.0** ✅ | **P10 不确定性显式化 + 反馈回路**：档位（数据/解析/界面）+ 做法变体 + 「这个数不对？」 | MINOR |
-| 1.0.0 | 及格线：P8 按「用 P10 的新手段替代」记；**安卓 APK**（需先补 JDK + Android SDK，见 `AGENTS.md` 第 1 节的机器状态） | — |
+| **0.13.0** ✅ | **安卓 App（Capacitor 壳）** + 修掉 maskable 图标环偏心 26.8%（见上面 0.13.0 一节） | MINOR |
+| 1.0.0 | 及格线：P8 按「用 P10 的新手段替代」记；安卓 APK 已产出（0.13.0）；**iOS 走 PWA**，不另做包 | — |
 
 **1.0.0 及格线**（不变）：P5、P6 全部完成；P8 关键数据人工校核达标；P9 导出体验落地；用户实际用顺无「一上手就撞到」的问题。
 

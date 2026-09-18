@@ -11,6 +11,62 @@
 
 ---
 
+## [0.13.0] - 2026-09-19
+
+**有了一个能装到安卓手机上的 App（APK），顺手修掉一个图标偏心 26.8% 的老 bug。**
+
+### 安卓 App（Capacitor 壳）
+
+Web 那一半本来就是完整的 PWA，所以这里不加任何功能，只做一层**壳**：
+用 Capacitor 把静态产物（`out/`）装进 WebView，`appId = com.orang1ver.yuanqiledger`，
+桌面名字「元气账本」，`versionName` **直接读 `package.json`**（不再手写第二个版本号）。
+
+⚠️ 三件刻意的做法：
+
+1. **打包时构建不带 `BASE_PATH`**。子路径是给 GitHub Pages 的（`/yuanqi-ledger/`），
+   而 WebView 从 `https://localhost` 起、站点根就是 `/` —— 带上子路径的表现是
+   **页面能开、`_next/` 全 404，也就是纯白屏**。`build-apk.ps1` 因此会**断言产物里没有子路径前缀**。
+2. **签名密钥不进仓库**（`.gitignore` 里把 `*.jks` / `keystore.properties` 打开）：
+   仓库是公开的，密钥进了 git 就永远换不掉。密钥在 `D:\Android\keystore\`，
+   只由 `android/keystore.properties` 指过去。**没有它 Gradle 照样"成功"**，
+   只是产出一个装不上的未签名包 —— 所以脚本先断言密钥在，再用 `apksigner` 验一遍。
+3. **`sw.js` 的版本占位符要在打包前注入**（与 `deploy.mjs` 同一套替换）。
+   不做这一步，APK 里的缓存名永远是字面量 `__VERSION__`，装上新版之后旧缓存还在 ——
+   正是 iOS 上踩过的「看不到新版」那一类。
+
+**这台机器的网络坑**（都写进 `scripts/android/setup-sdk.ps1` 的注释了）：
+`dl.google.com` 直连不通（本机没开代理），所以 SDK 是**从腾讯镜像手工铺目录**装的，
+`maven.google.com` / Maven Central 换成阿里云镜像。
+镜像上没有 build-tools 35，这一条**反过来决定了整个版本矩阵**：
+`AGP 8.6.1 + Gradle 8.11.1 + compileSdk 35 + build-tools 34.0.0`（AGP 8.7+ 硬要 35）。
+Capacitor 自己的两个子模块硬编码 AGP 8.7.2 且从 `google()` 拉，
+根工程改不了 `node_modules`，于是在 `android/build.gradle` 里为所有子工程**前置镜像 + 把 AGP 压到 8.6.1**。
+
+### 顺带修掉：maskable 图标的环偏在左上角（画布的 26.8%）
+
+`make-icons.py` 的 `maskable_logo` 把 `w * 0.62` 当成 `size` 传给了 `mark_color`，
+而 `mark_color` 是**以 `size/2` 为中心**的 —— 于是环连同中心一起被挪到了左上角。
+实测（读 git 里那一版 PNG 算外接框）：框中心 `(158.5,158.5)`，画布中心 `(255.5,255.5)`，
+**偏 137.2px**。maskable 图标在启动器里会被裁成圆形，表现就是「环偏在一角」。
+改法是给 `mark_color` 加 `scale`（只缩半径，不动中心），并把启动图/自适应图标都走同一条路。
+
+⚠️ 这条不可能靠肉眼发现，所以加了一条**自证过的**断言：出图前先算环的外接框中心，
+偏移超过 1.5px 就报错。判据用**外接框**而不是像素重心 —— 环是 300° 的弧，
+缺的那 60° 本来就会把重心拉偏（实测 18.6px），用重心会误报。
+
+### 验证
+
+- **APK**：`aapt2 dump badging` → `versionName='0.13.0'`（与 `package.json` 一致）、
+  `sdkVersion 23 / targetSdkVersion 35`、`application-label: '元气账本'`、
+  `launchable-activity: com.orang1ver.yuanqiledger.MainActivity`；`apksigner verify` 通过
+  （SHA-256 `cf9beecb…`）。3.5MB。
+- **图标自证**：把「用小画布」那个错法塞回去 → 断言报出
+  「外接框中心 (158.5,158.5)，画布中心 (255.5,255.5)，偏移 137.2px」，
+  与 git 里那份旧图标实测的偏移**完全一致**。
+- **Web 那一半没受影响**：全部闸门照跑（见下）。
+
+---
+
 ## [0.12.0] - 2026-09-19
 
 **不再假装每个数字都准 —— 把「这一笔是怎么算出来的」摆到桌面上：能当场改，也能当场质疑。**

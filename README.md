@@ -87,6 +87,50 @@ python scripts/verify-subpath.py --http http://127.0.0.1:4177   # 附加真实�
 > 忘了带 `BASE_PATH` 构建时，产物里所有路径都是根相对的，检查会刷屏报错 ——
 > 但那全是误报，根因在构建命令。脚本会先探测这一点并直接告诉你，别急着改代码。
 
+## 打安卓包（APK）
+
+网页那一半本来就是完整的 PWA；安卓包只是**一层壳**（Capacitor 把静态产物装进 WebView），
+没有加任何功能，也没有让数据离开手机。
+
+```bash
+npm run android:apk        # = scripts/android/build-apk.ps1
+```
+
+它按顺序做四件事，做完把包放到 `dist/yuanqi-ledger-<版本>.apk`：
+
+1. **不带 `BASE_PATH` 构建**（`out/`），并断言产物里没有 `/yuanqi-ledger/` 前缀
+2. 把 `sw.js` 的版本占位符注入真版本号（与 `scripts/deploy.mjs` 同一套）
+3. `npx cap sync android` 把 `out/` 铺进 `android/app/src/main/assets/public`
+4. `gradlew assembleRelease`，然后用 `aapt2` / `apksigner` 验包名、版本、签名
+
+装到手机：
+
+```bash
+adb install -r dist/yuanqi-ledger-0.13.0.apk
+```
+
+**换机器/重装时先铺工具链**（本机已装好，装在 D 盘）：
+
+```bash
+powershell -ExecutionPolicy Bypass -File scripts/android/setup-sdk.ps1
+```
+
+### 三个容易白忙一场的点
+
+- **打包时构建绝不能带 `BASE_PATH`**。子路径是给 GitHub Pages 的，而 WebView 从
+  `https://localhost` 起、站点根就是 `/`。带上子路径的表现是**页面能开、`_next/` 全 404
+  —— 也就是纯白屏**，而包里看不出任何异常。上面的脚本会替你断言这一点。
+- **签名密钥不在仓库里**。它在 `D:\Android\keystore\yuanqi-release.jks`，
+  由 `android/keystore.properties`（gitignored）指过去。没有它 Gradle 一样会"成功"，
+  只是产出一个**装不上的未签名包**。所以脚本先断言密钥在，再用 `apksigner` 验一遍。
+  ⚠️ **这个 jks 和它的密码要自己备份** —— 丢了就没法给已装的 App 做原地更新。
+- **图标要单独重铺**。`cap sync` 只管 `assets/public`，不会动 `android/app/src/main/res/`。
+  改了主题色或 `scripts/make-icons.py` 之后，先 `npm run icons` 再打包。
+
+> iOS 那边**不需要另做一个包**：这个 App 在 iPhone 上就是"添加到主屏幕"的 PWA，
+> 安装引导与更新机制都是现成的（见 `IOSInstallHint.tsx` 与 `public/sw.js`）。
+> 要上 App Store 得有一台 Mac + Xcode，那是另一件事。
+
 ## 五道闸门
 
 改了数据层、界面或食物库之后，跑这几个就知道有没有把东西弄坏：
@@ -239,7 +283,10 @@ lib/                 纯逻辑
 data/                随包分发的数据（食物库、份量表、示例菜单库等）
 scripts/             图标生成、发布、子路径自检、数据兼容自检、浏览器冒烟、
                      食物库质检、营养探针、样例数据生成
+  android/           装安卓 SDK、打 APK（见上面「打安卓包」）
   fixtures/          兼容样本数据（自检脚本与冒烟测试共用同一份）
+android/             Capacitor 生成的安卓工程（构建产物不入库，配置入库）
+capacitor.config.ts  壳的配置：appId / webDir / 桌面名
 ```
 
 **一条硬规矩：页面文件保持一眼能读完。** 每张卡自己管状态、通过回调通知父级 ——
@@ -252,8 +299,7 @@ DeepSeek 的 Key 也是调用方传进去的，不在 `lib/ai/` 里读 localStor
 也才能对着任意一条历史记录重算一遍看对不对。
 
 **食物库只在需要它的页面加载。** `lib/nutrition/library.ts` 会带上那份
-223 条食物的 JSON（`data/foods.zh.json` 本身 49.1KB，gzip 9.3KB），
-打进 chunk 后整个 chunk 约 59KB / gzip 12.4KB。
+243 条食物的 JSON，打进 chunk 后约 68KB（gzip 14KB 上下）。
 目前需要它的是**饮食页、菜单库、首页的推荐**；**健康小屋与周报不需要** ——
 周报的质量分只依赖记录里的营养快照，不查库。
 

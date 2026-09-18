@@ -1,0 +1,92 @@
+apply plugin: 'com.android.application'
+
+// Keystore material lives OUTSIDE the repo (D:\Android\keystore) and is only pointed at
+// by android/keystore.properties, which is gitignored. Two reasons: a signing key in git
+// is a key you can never rotate, and this repo is public.
+//
+// Without that file the release build is simply unsigned (still assembleable, just not
+// installable) -- so a plain checkout does not fail, it only cannot ship.
+def keystorePropsFile = rootProject.file("keystore.properties")
+def hasKeystore = keystorePropsFile.exists()
+def keystoreProps = new Properties()
+if (hasKeystore) {
+    keystorePropsFile.withInputStream { keystoreProps.load(it) }
+}
+
+// Single source of truth for the version: the repo's package.json. Hardcoding a second
+// number here is how an APK ends up claiming a version the web build never shipped.
+def pkg = new groovy.json.JsonSlurper().parseText(rootProject.file("../package.json").text)
+def semver = pkg.version.tokenize(".")
+def vCode = (semver[0] as int) * 10000 + (semver[1] as int) * 100 + (semver[2] as int)
+
+android {
+    namespace "com.orang1ver.yuanqiledger"
+    compileSdk rootProject.ext.compileSdkVersion
+    // Pinned: AGP 8.6 accepts build-tools 34.0.0, which is the newest the reachable
+    // mirror carries. Letting AGP pick its default would ask for 35.0.0 and fail.
+    buildToolsVersion "34.0.0"
+
+    defaultConfig {
+        applicationId "com.orang1ver.yuanqiledger"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode vCode
+        versionName pkg.version
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        aaptOptions {
+             // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
+             // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
+            ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+
+    signingConfigs {
+        if (hasKeystore) {
+            release {
+                storeFile file(keystoreProps['storeFile'])
+                storePassword keystoreProps['storePassword']
+                keyAlias keystoreProps['keyAlias']
+                keyPassword keystoreProps['keyPassword']
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (hasKeystore) {
+                signingConfig signingConfigs.release
+            }
+        }
+    }
+}
+
+repositories {
+    flatDir{
+        dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
+    }
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+    implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
+    implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    implementation project(':capacitor-android')
+    testImplementation "junit:junit:$junitVersion"
+    androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
+    androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
+    implementation project(':capacitor-cordova-android-plugins')
+}
+
+apply from: 'capacitor.build.gradle'
+
+try {
+    def servicesJSON = file('google-services.json')
+    if (servicesJSON.text) {
+        apply plugin: 'com.google.gms.google-services'
+    }
+} catch(Exception e) {
+    logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
+}

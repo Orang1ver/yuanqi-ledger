@@ -17,6 +17,15 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.13.0",
+    date: "2026-09-19",
+    highlights: [
+      "有安卓 App 了 —— 不用再靠浏览器打开，桌面图标点开就是账本",
+      "顺手修掉一个图标 bug：那个圆环原来偏在左上角（偏了整块画布的 26.8%）",
+      "网页版一切照旧，数据也还是存在你自己的手机里，两边不互通、也不上传",
+    ],
+  },
+  {
     version: "0.12.0",
     date: "2026-09-19",
     highlights: [

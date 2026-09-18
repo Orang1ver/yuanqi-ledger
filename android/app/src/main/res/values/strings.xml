@@ -1,0 +1,11 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <!-- Launcher label. Chinese is fine here: this is UTF-8 XML, not a Gradle script.
+         (capacitor.config.ts keeps appName ASCII because Capacitor writes it into
+         settings.gradle's rootProject.name, which Gradle reads as GBK on Windows.)
+         NOTE: XML comments may not contain a double hyphen. -->
+    <string name="app_name">元气账本</string>
+    <string name="title_activity_main">元气账本</string>
+    <string name="package_name">com.orang1ver.yuanqiledger</string>
+    <string name="custom_url_scheme">com.orang1ver.yuanqiledger</string>
+</resources>

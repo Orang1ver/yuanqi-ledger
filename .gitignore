@@ -15,6 +15,14 @@
 
 # 演示用样例数据备份（npm run demo:data）
 /.tmp-demo/
+
+# 打好的安卓包（scripts/android/build-apk.ps1 的产物，属于构建输出不是源码）
+/dist/
+
+# Python 的字节码缓存（scripts/*.py 被 import 一次就会生成）
+__pycache__/
+*.pyc
+
 next-env.d.ts
 *.tsbuildinfo
 
