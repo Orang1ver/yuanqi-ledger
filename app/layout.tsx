@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { AppInit } from "./components/shell/AppInit";
+import { AndroidInstallHint } from "./components/shell/AndroidInstallHint";
 import { BackupReminderBanner } from "./components/shell/BackupReminderBanner";
 import { IOSInstallHint } from "./components/shell/IOSInstallHint";
 import { UpdateBanner } from "./components/shell/UpdateBanner";
@@ -70,6 +71,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <AppInit />
         <UpdateBanner />
         <IOSInstallHint />
+        <AndroidInstallHint />
         <BackupReminderBanner />
         {children}
       </body>

@@ -17,6 +17,15 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.11.0",
+    date: "2026-09-19",
+    highlights: [
+      "安卓上会提示你把这东西装到桌面了 —— 以前安卓用户根本不知道能装",
+      "点「安装」走的就是系统的安装流程，不是个摆设按钮",
+      "不想装点「不用了」，以后不再打扰",
+    ],
+  },
+  {
     version: "0.10.0",
     date: "2026-09-19",
     highlights: [

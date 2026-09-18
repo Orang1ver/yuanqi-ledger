@@ -7,9 +7,14 @@ import { KEYS } from "@/lib/storage/keys";
 /**
  * iOS「添加到主屏」提示。
  *
- * 为什么只对 iOS 显示：Android/桌面 Chrome 会自己弹安装提示（beforeinstallprompt），
- * 而 iOS Safari 没有任何编程接口，只能教用户手动操作。且**必须用 Safari 打开**——
- * 微信内置浏览器、Chrome for iOS 都不支持"添加到主屏"。
+ * 为什么只对 iOS 显示：iOS Safari 没有任何编程接口，只能教用户手动操作；
+ * 安卓那边是真的能调起系统安装流程的，走 `AndroidInstallHint`。
+ *
+ * ⚠️ 这里原来写着「Android/桌面 Chrome 会自己弹安装提示（beforeinstallprompt）」——
+ * **那句已经过期**：Chrome 76 起移除了 mini-infobar，`beforeinstallprompt`
+ * 不再自带任何 UI，所以安卓也**必须自己问一句**，否则用户根本不知道能装到桌面。
+ *
+ * 且**必须用 Safari 打开**——微信内置浏览器、Chrome for iOS 都不支持"添加到主屏"。
  *
  * 已装到主屏时（standalone 模式）不再显示。
  */

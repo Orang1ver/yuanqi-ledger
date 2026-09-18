@@ -7,6 +7,7 @@
   "display": "standalone",
   "orientation": "portrait",
   "lang": "zh-CN",
+  "categories": ["health", "food", "lifestyle"],
   "background_color": "#F7F5EF",
   "theme_color": "#F7F5EF",
   "icons": [

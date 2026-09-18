@@ -1064,6 +1064,125 @@ async function checkImportPreview(page, baseUrl, failures) {
   failures.push(...problems.map((p) => (p.startsWith("导入预览") ? p : `导入预览：${p}`)));
 }
 
+// ---------- 安卓「装到桌面」提示 ----------
+
+/**
+ * Chrome 76 起不再自动弹安装提示（mini-infobar 被移除），`beforeinstallprompt`
+ * 也不再自带任何 UI —— 所以这条提示是**应用唯一的机会**，不做就等于没有。
+ *
+ * 四条断言：
+ *  ① 浏览器说「可安装」时，引导条出现；
+ *  ② 点「安装」**真的调了 `prompt()`** —— 这条最要紧：
+ *     就算 `onClick` 里漏掉 `prompt()`，引导条照样会消失，检查会**假绿**（地雷 23 的同类）；
+ *  ③ 点「不用了」→ 消失，且**永久**关闭；
+ *  ④ 重载后（再给一次可安装信号）不再出现。
+ *
+ * ⚠️ `beforeinstallprompt` 由浏览器自己决定何时触发，测试里等不到它自然发生，
+ * 所以这里**伪造一个**派发进去 —— 验的是「我们收到它会怎么做」，
+ * 而不是「浏览器会不会发它」（后者不归应用管）。
+ */
+async function checkAndroidInstallHint(page, baseUrl, failures) {
+  const KEY = "recipe.androidInstallHintDismissed.v1";
+  const problems = [];
+
+  /** 页内伪造一次「可安装」信号 */
+  const fakePrompt = `(() => {
+    const e = new Event("beforeinstallprompt");
+    e.prompt = () => { window.__promptCalled = true; return Promise.resolve(); };
+    e.userChoice = Promise.resolve({ outcome: "dismissed" });
+    window.dispatchEvent(e);
+    return true;
+  })()`;
+
+  await goto(page, `${baseUrl}/?install0=${Date.now()}`);
+  await evaluate(page, `(() => { localStorage.removeItem("${KEY}"); return true; })()`);
+
+  // ① 引导条出现
+  const shown = await evaluate(
+    page,
+    `(async () => {
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+      window.__promptCalled = false;
+      ${fakePrompt};
+      await sleep(300);
+      return !!document.querySelector('[data-yq="android-install-hint"]');
+    })()`,
+  );
+  if (!shown) problems.push("浏览器说可安装，引导条却没出现");
+
+  // ② 点「安装」→ 必须真的调 prompt()
+  const installed = await evaluate(
+    page,
+    `(async () => {
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+      const el = document.querySelector('[data-yq="android-install-hint"]');
+      if (!el) return { clicked: false };
+      const b = [...el.querySelectorAll("button")].find((x) => x.innerText.includes("安装"));
+      if (!b) return { clicked: false };
+      b.click();
+      await sleep(300);
+      return {
+        clicked: true,
+        promptCalled: window.__promptCalled === true,
+        gone: !document.querySelector('[data-yq="android-install-hint"]'),
+      };
+    })()`,
+  );
+  if (!installed.clicked) problems.push("引导条上没有「安装」按钮");
+  else if (!installed.promptCalled) problems.push("点了「安装」却没调 prompt() —— 那按钮是个摆设");
+  else if (!installed.gone) problems.push("点了「安装」之后引导条没收起来");
+
+  // ③ 再给一次信号（点「安装」不该永久关掉它），这次点「不用了」
+  const dismissed = await evaluate(
+    page,
+    `(async () => {
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+      ${fakePrompt};
+      await sleep(300);
+      const el = document.querySelector('[data-yq="android-install-hint"]');
+      if (!el) return { shown: false };
+      const b = [...el.querySelectorAll("button")].find((x) => x.innerText.includes("不用了"));
+      if (!b) return { shown: true, clicked: false };
+      b.click();
+      await sleep(300);
+      return {
+        shown: true,
+        clicked: true,
+        gone: !document.querySelector('[data-yq="android-install-hint"]'),
+        stored: localStorage.getItem("${KEY}") !== null,
+      };
+    })()`,
+  );
+  if (!dismissed.shown) problems.push("第二次可安装信号之后引导条没再出现（点「安装」不该永久关掉它）");
+  else if (!dismissed.clicked) problems.push("引导条上没有「不用了」按钮");
+  else {
+    if (!dismissed.gone) problems.push("点了「不用了」引导条没消失");
+    if (!dismissed.stored) problems.push("点了「不用了」没写进 localStorage —— 下次打开还会来烦一次");
+  }
+
+  // ④ 重载后再给一次信号，不该再出现
+  await goto(page, `${baseUrl}/?install1=${Date.now()}`);
+  const afterReload = await evaluate(
+    page,
+    `(async () => {
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+      ${fakePrompt};
+      await sleep(300);
+      return !!document.querySelector('[data-yq="android-install-hint"]');
+    })()`,
+  );
+  if (afterReload) problems.push("说过「不用了」之后重载，引导条又出现了");
+
+  const ok = problems.length === 0;
+  console.log(
+    `${ok ? "✓" : "✗"} 安卓装到桌面：可安装信号 → ${shown ? "出现引导条" : "没出现"}；` +
+      `点「安装」${installed.promptCalled ? "真的调起了系统安装" : "没调 prompt"}` +
+      `（${installed.gone ? "并收起" : "没收起"}）；` +
+      `点「不用了」${dismissed.gone ? "消失且重载后不再出现" : "没关掉"}`,
+  );
+  failures.push(...problems.map((p) => (p.startsWith("安卓") ? p : `安卓装到桌面：${p}`)));
+}
+
 async function checkAiPick(page, baseUrl, failures) {
   const DISH_OK = "番茄蛋汤";
   const DISH_FAKE = "凭空捏造的菜";
@@ -1524,6 +1643,9 @@ try {
 
   // 这一条会**替换**饮食记录（前置自己造），必须排在所有依赖它的检查之后
   await checkImportPreview(page, BASE_URL, failures);
+
+  // 这一条会**永久**写掉「安卓安装提示已关闭」，所以排在别的界面检查之后
+  await checkAndroidInstallHint(page, BASE_URL, failures);
 
   // 这一条会**覆盖**菜单库与饮食记录（前置自己造），必须排在最后
   await checkAiPick(page, BASE_URL, failures);

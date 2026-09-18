@@ -43,6 +43,11 @@ export const KEYS = {
   prefs: "recipe.prefs.v1",
   /** iOS 安装提示是否已关闭 */
   iosInstallHintDismissed: "recipe.iosInstallHintDismissed.v1",
+  /**
+   * 安卓「装到桌面」提示是否已关闭。
+   * 与 iOS 那个同一个性质：**应用元数据**，不进 `describeBackup` 的导入预览。
+   */
+  androidInstallHintDismissed: "recipe.androidInstallHintDismissed.v1",
   /** 更新提示是否已关闭 */
   updateBannerDismissed: "recipe.updateBannerDismissed.v1",
   /** 饮食日记（元气账本新增） */

@@ -54,11 +54,23 @@ export function saveApiKeys(keys: { deepseekKey?: string }): void {
   writeJSON(KEYS.apikeys, keys);
 }
 
-/** 一次性提示的关闭状态（iOS 安装提示 / 更新横幅） */
-export function loadDismissed(key: typeof KEYS.iosInstallHintDismissed | typeof KEYS.updateBannerDismissed): boolean {
+/**
+ * 可以「关掉就不再显示」的那几个键。
+ *
+ * ⚠️ 用 union 而不是 `StorageKey`：这些键存的是布尔，
+ * 而别的键（饮食记录、健康档案）**绝不能**被当成开关写坏。
+ * 新增一个一次性提示时，把它的键加到这里。
+ */
+export type DismissibleKey =
+  | typeof KEYS.iosInstallHintDismissed
+  | typeof KEYS.androidInstallHintDismissed
+  | typeof KEYS.updateBannerDismissed;
+
+/** 一次性提示的关闭状态（安装提示 / 更新横幅） */
+export function loadDismissed(key: DismissibleKey): boolean {
   return readJSON<boolean>(key, false);
 }
 
-export function dismiss(key: typeof KEYS.iosInstallHintDismissed | typeof KEYS.updateBannerDismissed): void {
+export function dismiss(key: DismissibleKey): void {
   writeJSON(key, true);
 }

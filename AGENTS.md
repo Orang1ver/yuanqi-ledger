@@ -54,6 +54,17 @@ git -C "$REPO" worktree remove "$DEV" && git -C "$REPO" branch -d feat/<名字>
 - 报 `Device or resource busy` 时，先把 shell 的 cwd 切出该目录再删
 - 自检：`npm run lint` + 构建 + 子路径检查（见第 4 节）
 
+### 本机环境约定
+
+- **装 JDK / Android SDK / 其他大体积依赖，一律装到 D 盘**（系统盘空间紧，用户明确要求）。
+  落到具体做法：`winget install --location "D:\..."`、
+  `sdkmanager --sdk_root=D:\Android\Sdk`、`JAVA_HOME` / `ANDROID_HOME` 指向 D 盘对应目录。
+- 这台机器的当前状态（2026-09-19 探过）：
+  - `adb` **有** —— 但它是 WinGet 单独装的 platform-tools，
+    上级目录里**没有** `platforms/`、`build-tools/`、`cmdline-tools/`，**不是完整 SDK**
+  - **JDK 没有**（`JAVA_HOME` 空、`Program Files\Java` 不存在、没装 Android Studio）
+  - 所以**打安卓 APK 之前要先补这两样**（约 4~6GB）
+
 ---
 
 ## 2. 推送目标
@@ -388,6 +399,8 @@ curl -s "https://orang1ver.github.io/yuanqi-ledger/sw.js?cb=$(date +%s)" | grep 
 | **跨组件必须一致的文案（页面名 / 免责声明 / 健康区间说明）** | `lib/copy.ts`（⚠️ 刻意**不是**全量文案表） |
 | 数据读写 | `lib/storage/`（`io.ts` 原语、`health.ts`/`meals.ts`/`takeout.ts` 领域、`backup.ts` 备份） |
 | **久未备份提醒（阈值 / 静默期 / 何时该提醒）** | `lib/storage/backupReminder.ts` |
+| **「装到桌面」提示（iOS 手动教 / 安卓调系统安装）** | `app/components/shell/IOSInstallHint.tsx`、`AndroidInstallHint.tsx` |
+| **导入预览 + 「整份覆盖」的撤销快照** | `app/components/shell/ImportPreview.tsx`、`lib/storage/backup.ts` |
 | 健康计算（BMR/TDEE/目标） | `lib/health.ts` |
 | 喝水与步数换算 | `lib/steps.ts` |
 | 连续天数与徽章 | `lib/rewards.ts` |
