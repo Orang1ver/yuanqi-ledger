@@ -15,9 +15,9 @@
 import { mealSlotFromTime } from "../date";
 import type { MealSlot } from "../tags";
 import { fallbackGrams, makeDietEntry, resolvePortion } from "./core";
-import { findFoodByName, portionTable, searchFoods } from "./library";
+import { findFoodByName, foodsByCategory, portionTable, searchFoods } from "./library";
 import { parseFragment, splitFragments } from "./parse";
-import type { DietEntry, DietEntrySource, FoodItem, PortionRule } from "./types";
+import type { DietEntry, DietEntrySource, FoodCategory, FoodItem, PortionRule } from "./types";
 
 export type QuickCandidate = {
   /** 原句里的那一段 */
@@ -60,8 +60,36 @@ export type MissingReason =
   | "meal"
   /** 水、茶、黑咖啡这类，记了也几乎不改变任何结论 */
   | "no-calorie"
+  /** 说的是**哪一类**而不是哪一样（「肉」「蔬菜」「主食」） */
+  | "generic"
   /** 库里确实没有这一条 */
   | "not-found";
+
+/**
+ * 泛称：用户说的是"哪一类"，不是"哪一样"。
+ *
+ * ⚠️ **绝不替他把泛称配成某一条具体食物。** 「一份肉」到底记成猪肉、鸡肉还是牛肉？
+ * 猜错的后果是**账本上多了一条数值正常、但根本不是他吃的东西的记录** ——
+ * 比说一句"太笼统"有害得多。所以这里只做两件事：说清太笼统，并按分类摆几个候选。
+ *
+ * ⚠️ 表里只放**库里精确匹配不到**的词。「饭」是「米饭」的别名、「青菜」能模糊命中
+ * 「清炒时蔬」——那些轮不到这里，放进来反而会把本来能命中的说法抢走。
+ */
+const GENERIC_TERMS: { words: string[]; category: FoodCategory; label: string }[] = [
+  { words: ["肉", "肉类", "荤菜", "荤"], category: "meat", label: "荤菜" },
+  { words: ["蔬菜", "素菜", "青菜", "菜"], category: "veg", label: "素菜" },
+  { words: ["主食", "碳水"], category: "staple", label: "主食" },
+  { words: ["水果"], category: "fruit", label: "水果" },
+  { words: ["汤", "汤水"], category: "soup", label: "汤粥" },
+  { words: ["饮料", "喝的"], category: "drink", label: "饮料" },
+];
+
+function genericOf(name: string): { category: FoodCategory; label: string } | null {
+  for (const g of GENERIC_TERMS) {
+    if (g.words.includes(name)) return { category: g.category, label: g.label };
+  }
+  return null;
+}
 
 /**
  * 整餐的说法。**必须整名匹配**，否则「午饭吃了红烧肉」会被当成"只说了餐次"。
@@ -157,12 +185,20 @@ function resolveOne(fragment: string, altLimit: number): QuickCandidate {
 
   const food = matchFood(parsed.name);
   if (!food) {
+    // 泛称（「肉」「蔬菜」）走单独一条路：不硬配具体食物，只按分类摆候选
+    const generic = genericOf(parsed.name);
     c.missing = true;
-    c.reason = missingReason(parsed.name);
-    c.explain = missingExplain(parsed.name, c.reason);
-    // 仍然给几个相近的让用户挑，别让他从零搜。
-    // 整餐的说法也给：说「吃了顿饭」的人多半要的是主食，摆个「米饭」出来比让他自己搜强。
-    c.alternatives = searchFoods(parsed.name, altLimit);
+    if (generic) {
+      c.reason = "generic";
+      c.explain = `「${parsed.name}」太笼统了 —— 说明白是哪一样才记得准。下面按${generic.label}给你几个，或者自己搜一个。`;
+      c.alternatives = foodsByCategory(generic.category).slice(0, altLimit);
+    } else {
+      c.reason = missingReason(parsed.name);
+      c.explain = missingExplain(parsed.name, c.reason);
+      // 仍然给几个相近的让用户挑，别让他从零搜。
+      // 整餐的说法也给：说「吃了顿饭」的人多半要的是主食，摆个「米饭」出来比让他自己搜强。
+      c.alternatives = searchFoods(parsed.name, altLimit);
+    }
     return withApprox(c, parsed);
   }
 

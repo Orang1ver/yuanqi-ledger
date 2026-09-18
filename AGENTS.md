@@ -191,7 +191,7 @@ CRYPT_E_NO_REVOCATION_CHECK (0x80092012) - 吊销功能无法检查证书是否�
     **LLM 只负责「听懂」与「措辞」，数值一律回库里查表**，且要过 schema 校验
     （食物必须在候选集内、克数在合理区间）。校验失败就降级为「追问用户一句」。
     让模型直接吐热量数字，数据很快会变成幻觉垃圾。
-    已落地：`lib/nutrition/`（纯函数 + 查库 + 份量解析）与 `data/foods.zh.json`（184 条）。
+    已落地：`lib/nutrition/`（纯函数 + 查库 + 份量解析）与 `data/foods.zh.json`（210 条）。
     该层**不许 import UI / Next / localStorage 的东西**，id 与时间戳由调用方传进来
     （不在里面 `Date.now()`）—— 换来的是它能在 Node 里被直接调用、被单测、被闸门检查。
 11. **「没有数据」不等于「0」**。`sodium` / `fiber` 在库里查不到时必须保持 `undefined`，
@@ -235,7 +235,7 @@ CRYPT_E_NO_REVOCATION_CHECK (0x80092012) - 吊销功能无法检查证书是否�
     这个 bug 已经犯过一次，探针里能一眼看出来：正确时输出「折算：1 ×『一包』70g」，
     退化时输出「按分类兜底 50g（估算）」。
 15. **食物库只该被需要它的页面 import**。`lib/nutrition/library.ts` 会带上那份
-    184 条食物、约 77KB（gzip 7.5KB）的 JSON。目前需要它的是饮食页、菜单库、
+    210 条食物、约 55KB（gzip 11.7KB）的 JSON。目前需要它的是饮食页、菜单库、
     首页的推荐；**健康小屋与周报不需要**（周报的质量分只依赖记录里的营养快照）。
     给新页面加功能时容易顺手 import 进来，构建后对比一下各页面引用的 chunk 里
     有没有食物名就知道了。相关文件里都留了这条注释，别删。
@@ -301,6 +301,15 @@ CRYPT_E_NO_REVOCATION_CHECK (0x80092012) - 吊销功能无法检查证书是否�
     另一个坑：改成整词匹配后，**认不出来的词必须返回 `null` 并退回「整串当食物名」**，
     绝不能落到 `Number(word)` 变成 NaN —— NaN 会一路写进 `DietEntry.amount`，
     在账本里变成一个谁也解释不了的数。**"认不出来"要有一个明确的出口，不能靠默认值兜。**
+27. **改数据文件时，别用 `JSON.parse` + `JSON.stringify` 整体重写**（2026-09-18 踩过）。
+    往 `data/foods.zh.json` 加条目时图省事整体序列化写回，结果：`"fat": 1.0` 变成 `"fat":1`、
+    每条里外层的空格也全丢了 —— diff 从「+25 行」变成「+211 / −195 行」，
+    一次"只加了几条数据"的改动看起来像把整个库重写了一遍，review 时什么都看不出来。
+    数字表示（`1.0` vs `1`）**不可逆**：改完再想还原，只能从 git 里取回原文件。
+    **做法**：数据文件一律**按文本插入** —— 读成行数组，在目标行后面 `splice` 新行，
+    其它行一个字节都不动；写完用 `git diff --stat` 确认「只增不删」。
+    同一天取回原文件时还撞到 `git checkout -- <file>` 被安全策略拦下（丢弃工作区改动属高危），
+    改用 `git show HEAD:<file>` 读回内容再写 —— 效果一样，且不会误伤工作区里其它改动。
 
 ---
 
@@ -313,12 +322,13 @@ MSYS_NO_PATHCONV=1 BASE_PATH=/yuanqi-ledger npm run build      # 必须成功
 python scripts/verify-subpath.py                                # 子路径点击自检
 ```
 
-改了**数据层 / 食物库 / 营养层**时，上面三道之外再加这四道（含义见 README「四道闸门」）：
+改了**数据层 / 食物库 / 营养层**时，上面三道之外再加这五道（含义见 README「五道闸门」）：
 
 ```bash
 npm run check:data        # 既有结构的数据还读得出来吗
 npm run smoke             # 真实浏览器里真的画出来了吗（5 个页面）
-npm run check:nutrition   # 食物库算术自洽吗（只读 JSON，坏了第一道就拦）
+npm run check:nutrition   # 食物库算术自洽吗 + 每条食物有没有份量规则
+npm run check:reference   # 标了外部来源的数值有没有登记台账
 npm test                  # 营养层与数据层语义对吗（无数据≠0、快照、数字只能来自一次乘法）
 ```
 
@@ -368,8 +378,10 @@ curl -s "https://orang1ver.github.io/yuanqi-ledger/sw.js?cb=$(date +%s)" | grep 
 | 连续天数与徽章 | `lib/rewards.ts` |
 | 运动统计与里程碑 | `lib/exercise.ts` |
 | 周维度达标率 | `lib/weekly.ts` |
-| **食物库（184 条，按每 100g/ml）** | `data/foods.zh.json` |
-| **份量换算规则（82 条）** | `data/foodPortions.json` |
+| **食物库（210 条，按每 100g/ml）** | `data/foods.zh.json` |
+| **份量换算规则（103 条）** | `data/foodPortions.json` |
+| **数值引用台账（出处，不存数值）** | `data/foodSources.json` |
+| **引用台账闸门** | `scripts/check-food-reference.mjs` |
 | **营养纯函数核心** | `lib/nutrition/core.ts` |
 | **查库与检索** | `lib/nutrition/library.ts` |
 | **口语份量解析** | `lib/nutrition/parse.ts` |

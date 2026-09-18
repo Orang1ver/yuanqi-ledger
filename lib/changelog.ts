@@ -17,6 +17,15 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.6.0",
+    date: "2026-09-18",
+    highlights: [
+      "「一份包菜」「一个土豆」「一份草莓」「一根胡萝卜」这些常见说法都能记上了 —— 补了 26 条基础食材",
+      "「15只饺子」不再算成 15 份 3000g；另有 19 条食物补上了缺失的份量规则",
+      "说「一份肉」不再假装库里没有：会明说太笼统，并按荤菜 / 素菜给你几个候选挑",
+    ],
+  },
+  {
     version: "0.5.3",
     date: "2026-09-18",
     highlights: [

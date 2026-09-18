@@ -554,11 +554,14 @@ describe("一句话记录 · 兜底不许算错", () => {
     const cs = resolveText("一份饭两份肉一份包菜");
     assert.equal(cs.length, 3);
     assert.equal(cs[0].food?.name, "米饭");
-    // 「肉」是泛称、库里没有 —— 就该说"库里没有"并给相近项，不能硬配一条数值不对的
+    // 「肉」是泛称 —— 走单独一条路（说清太笼统 + 按分类给候选），绝不硬配一条具体食物
     assert.equal(cs[1].name, "肉");
-    assert.equal(cs[1].missing, true);
-    assert.equal(cs[2].name, "包菜");
-    assert.equal(cs[2].missing, true);
+    assert.equal(cs[1].reason, "generic");
+    assert.equal(cs[1].food, undefined);
+    // 「包菜」在 0.6.0 补进库里了（卷心菜的别名），这里必须真的算出来而不是说"库里没有"
+    assert.equal(cs[2].food?.name, "卷心菜");
+    assert.equal(cs[2].grams, 200);
+    assert.equal(cs[2].missing, false);
 
     // 「我吃了」那段剥掉噪音后是空的，不该变成一条记录
     assert.equal(resolveText("我吃了一份饭两份肉").length, 2);
@@ -690,6 +693,28 @@ describe("没匹配上时要说清是哪一种", () => {
     assert.equal(c.reason, "not-found");
     assert.match(c.explain ?? "", /库里没有/);
   });
+
+  it("泛称（「肉」「蔬菜」）不硬配具体食物，只按分类给候选", () => {
+    // 猜错的后果是账本上多一条「数值正常、但根本不是他吃的东西」的记录 ——
+    // 比说一句"太笼统"有害得多。所以这里只钉两件事：说了太笼统、候选就是那一类。
+    const [rou] = resolveText("一份肉");
+    assert.equal(rou.missing, true);
+    assert.equal(rou.reason, "generic");
+    assert.equal(rou.food, undefined, "泛称绝不许被配成具体食物");
+    assert.match(rou.explain ?? "", /太笼统/);
+    assert.ok(rou.alternatives.length > 0, "要按分类摆候选，别让用户从零搜");
+    for (const f of rou.alternatives) assert.equal(f.category, "meat", `候选「${f.name}」不是荤菜`);
+
+    const [shucai] = resolveText("一份蔬菜");
+    assert.equal(shucai.reason, "generic");
+    for (const f of shucai.alternatives) assert.equal(f.category, "veg");
+
+    // 整句里混着泛称时，只有那一份走泛称，别的照常算出来
+    const cs = resolveText("一碗米饭两份肉一份包菜");
+    assert.equal(cs.length, 3);
+    assert.equal(cs[1].reason, "generic");
+    assert.equal(cs[2].food?.name, "卷心菜");
+  });
 });
 
 describe("常见口语不许因为缺别名就记不上", () => {
@@ -710,6 +735,30 @@ describe("常见口语不许因为缺别名就记不上", () => {
   it("加了别名也不许抢走更具体的条目：「蛋炒饭」还是蛋炒饭", () => {
     assert.equal(matchFood("蛋炒饭")?.name, "蛋炒饭");
     assert.equal(matchFood("炒饭")?.name, "蛋炒饭");
+  });
+
+  it("新补的基础食材：常见说法要能算出克数，而且不标估算", () => {
+    // 这一批是按中国疾控中心营养与健康所的公开数据补进来的，用户报的「一份包菜」就在里面
+    const bao = resolveText("一份包菜")[0];
+    assert.equal(bao.food?.name, "卷心菜");
+    assert.equal(bao.grams, 200);
+    assert.equal(bao.estimated, false, "命中了份量规则就不该标成估算");
+    assert.equal(bao.missing, false);
+
+    assert.equal(resolveText("一个土豆")[0].grams, 150);
+    assert.equal(resolveText("一份草莓")[0].grams, 150);
+    assert.equal(resolveText("一根胡萝卜")[0].grams, 150);
+    assert.equal(resolveText("一个番茄")[0].grams, 150);
+    assert.equal(resolveText("两份鸡胸肉")[0].grams, 300);
+
+    // 「15只饺子」曾经是 15 份 3000g —— 份量表里根本没有 `只[饺子]` 这条
+    const jiaozi = resolveText("15只饺子")[0];
+    assert.equal(jiaozi.food?.name, "饺子");
+    assert.equal(jiaozi.unitLabel, "只");
+    assert.equal(jiaozi.grams, 300);
+
+    // 「一份西兰花」以前会模糊配到「蒜蓉西兰花」（炒过的，多了油）
+    assert.equal(resolveText("一份西兰花")[0].food?.name, "西兰花");
   });
 });
 

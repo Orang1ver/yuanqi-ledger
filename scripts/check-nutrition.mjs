@@ -89,7 +89,32 @@ if (SELFTEST) {
     process.exit(2);
   }
   victim.fat = 3.4; // 正确值是 34 —— 差一位小数，算式就会对不上
-  sabotaged = `把「${victim.name}」的脂肪从 34 改成 3.4`;
+
+  /*
+   * 第二处破坏，专门喂给下面「份量表联动」那条检查。
+   *
+   * 两条检查长在两处，破坏点就必须落在两处：只破坏一处的话，另一条检查全绿
+   * 也说明不了它会拦人。这个坑踩过一次（见 AGENTS.md 地雷 23）——
+   * 当时补丁先被另一道防线挡掉，于是误判成"检查不灵敏"。
+   *
+   * 这条假食物的三大营养素是配平过的（4×4 + 4×9 + 15×4 = 112，对 100 差 12%，
+   * 在容差内），所以它只会触发"没有任何份量规则命中"这一个问题，不会串味。
+   */
+  LIBRARY.items.push({
+    id: "yq-selftest-orphan",
+    name: "自证用孤儿食物",
+    category: "veg",
+    unit: "g",
+    kcal: 100,
+    protein: 4,
+    fat: 4,
+    carb: 15,
+    source: "自证用（只在这个模式下存在）",
+  });
+
+  sabotaged =
+    `把「${victim.name}」的脂肪从 34 改成 3.4；` +
+    "并塞进一条没有任何份量规则能命中的食物「自证用孤儿食物」";
 }
 
 // ---------- 收集问题 ----------
@@ -230,6 +255,34 @@ for (const [i, r] of (PORTIONS.rules ?? []).entries()) {
   if (!hits.length) fail(at, `match 里的词没有任何一条食物命中：[${(r.match ?? []).join("、")}] —— 是不是食物名打错了？`);
 }
 
+// ---------- ④b 份量表与食物库的联动 ----------
+
+/*
+ * 每条食物至少要有一条份量规则命中它。
+ *
+ * 命中不了的话，用户写「一份草莓」「一个土豆」时 `resolvePortion` 查不到这个组合，
+ * 会**静默**退化成按分类兜底的估算克数 —— 界面上照样出一个数字，
+ * 只是那个数字没有任何依据，而且用户看不出来。
+ *
+ * 这条检查是补上来的：在它之前，食物库和份量表各校各的，
+ * 19 条食物「有名字、有营养值、但没有一条份量规则」这件事一直没人看见。
+ */
+const portionCovered = new Set();
+for (const r of PORTIONS.rules ?? []) {
+  for (const f of LIBRARY.items ?? []) {
+    const names = [f.name, ...(f.alias ?? [])];
+    if ((r.match ?? []).some((m) => names.some((n) => n.includes(m)))) portionCovered.add(f.id);
+  }
+}
+for (const f of LIBRARY.items ?? []) {
+  if (f?.id && !portionCovered.has(f.id)) {
+    fail(
+      `${f.id} (${f.name})`,
+      "没有任何份量规则命中它 —— 写「一份 / 一个」时会静默走分类兜底估算，出来的数字没有依据",
+    );
+  }
+}
+
 // ---------- ⑤ 体积预算 ----------
 
 const rawBytes = foodsFile.raw.length;
@@ -282,11 +335,16 @@ function report() {
 const failed = report();
 
 if (SELFTEST) {
-  if (failed === 0) {
-    console.error("\n✗ 自证失败：故意改坏了数据，闸门却没拦住 —— 这个闸门形同虚设。");
+  // 两处破坏各对应一条检查，两条都必须在 problems 里出现才算自证通过。
+  // 只断言"有问题"是不够的：那样其中一条检查坏掉了也照样绿。
+  const expectKinds = ["闭合校验不过", "没有任何份量规则命中"];
+  const missingKinds = expectKinds.filter((k) => !problems.some((p) => p.msg.includes(k)));
+  if (missingKinds.length) {
+    console.error(`\n✗ 自证失败：故意改坏了数据，这些检查却没拦下 —— ${missingKinds.join("、")}。`);
+    console.error("  永远通过的闸门等于没有闸门，先去修那条检查。");
     process.exit(2);
   }
-  console.log(`\n✓ 自证通过：破坏的数据确实被拦下了（${problems.length} 个问题）。`);
+  console.log(`\n✓ 自证通过：两处破坏都被对应的检查拦下了（共 ${problems.length} 个问题）。`);
   console.log("  永远通过的闸门等于没有闸门，所以这一步不能省。");
   process.exit(0);
 }

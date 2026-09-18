@@ -2,8 +2,8 @@
   "meta": {
     "version": 1,
     "unit": "每 100g（液体为每 100ml）；热量 kcal，蛋白/脂肪/碳水/纤维 g，钠 mg",
-    "updated": "2026-09-17",
-    "note": "自建库。数值是事实性数据，编排与口径由本项目自行整理。每条必须标 source：查不到就说查不到，不要拿通用值硬凑。sodium/fiber 缺省表示暂无数据，与 0 不等价。"
+    "updated": "2026-09-18",
+    "note": "自建库。数值是事实性数据，编排与口径由本项目自行整理。每条必须标 source：查不到就说查不到，不要拿通用值硬凑。sodium/fiber 缺省表示暂无数据，与 0 不等价。基础食材（蔬菜/菌菇/基础肉）的数值取自中国疾控中心营养与健康所《中国食物成分表》查询平台（https://nlc.chinanutri.cn，该站声明仅限非商业使用），source 里带网页编号，可逐条复核；早期条目的 source 仍是「通用成分值」这类模糊口径，待回填表号。"
   },
   "items": [
     { "id": "rice-cooked", "name": "米饭", "alias": ["白米饭", "蒸米饭", "大米饭", "饭", "白饭"], "category": "staple", "unit": "g", "kcal": 116, "protein": 2.6, "fat": 0.3, "carb": 25.9, "sodium": 2.5, "fiber": 0.3, "source": "通用成分值（蒸熟）" },
@@ -34,6 +34,8 @@
     { "id": "liangpi", "name": "凉皮", "category": "staple", "unit": "g", "kcal": 120, "protein": 3.0, "fat": 1.5, "carb": 24.0, "sodium": 700, "source": "通用成分值（含调料）" },
     { "id": "zongzi-meat", "name": "粽子（肉）", "alias": ["肉粽"], "category": "staple", "unit": "g", "kcal": 220, "protein": 5.0, "fat": 6.5, "carb": 35.0, "sodium": 600, "source": "通用成分值" },
     { "id": "rice-noodle-dry", "name": "米粉（干）", "alias": ["干米粉"], "category": "staple", "unit": "g", "kcal": 346, "protein": 8.0, "fat": 0.5, "carb": 78.0, "sodium": 15, "source": "通用成分值（干重）" },
+    { "id": "lianou", "name": "莲藕", "alias": ["藕"], "category": "staple", "unit": "g", "kcal": 74, "protein": 1.9, "fat": 0.2, "carb": 16.4, "sodium": 44.2, "source": "中国食物成分表·中国疾控中心营养与健康所（网页 516）" },
+    { "id": "shanyao", "name": "山药", "alias": ["薯蓣"], "category": "staple", "unit": "g", "kcal": 58, "protein": 1.9, "fat": 0.2, "carb": 12.4, "sodium": 18.6, "source": "中国食物成分表·中国疾控中心营养与健康所（网页 525）" },
 
     { "id": "hongshaorou", "name": "红烧肉", "alias": ["东坡肉"], "category": "meat", "unit": "g", "kcal": 460, "protein": 9.0, "fat": 45.0, "carb": 5.0, "sodium": 800, "source": "按标准菜谱估算" },
     { "id": "huiguorou", "name": "回锅肉", "category": "meat", "unit": "g", "kcal": 380, "protein": 12.0, "fat": 33.0, "carb": 8.0, "sodium": 900, "source": "按标准菜谱估算" },
@@ -63,6 +65,8 @@
     { "id": "zhuroupu", "name": "猪肉脯", "alias": ["肉脯"], "category": "meat", "unit": "g", "kcal": 400, "protein": 40.0, "fat": 20.0, "carb": 10.0, "sodium": 1500, "source": "通用成分值" },
     { "id": "niurouwan", "name": "牛肉丸", "category": "meat", "unit": "g", "kcal": 200, "protein": 16.0, "fat": 13.0, "carb": 6.0, "sodium": 800, "source": "通用成分值" },
     { "id": "xiaolongxia", "name": "小龙虾", "alias": ["麻辣小龙虾"], "category": "meat", "unit": "g", "kcal": 130, "protein": 16.0, "fat": 6.0, "carb": 2.0, "sodium": 1100, "source": "按标准菜谱估算（含汤汁）" },
+    { "id": "zhuliji", "name": "猪里脊", "alias": ["里脊肉", "猪柳"], "category": "meat", "unit": "g", "kcal": 155, "protein": 20.2, "fat": 7.9, "carb": 0.7, "sodium": 43.2, "source": "中国食物成分表·中国疾控中心营养与健康所（网页 784）" },
+    { "id": "jixiongrou", "name": "鸡胸肉", "alias": ["鸡胸脯肉", "鸡脯肉"], "category": "meat", "unit": "g", "kcal": 133, "protein": 19.4, "fat": 5, "carb": 2.5, "sodium": 34.4, "source": "中国食物成分表·中国疾控中心营养与健康所（网页 880）" },
 
     { "id": "qingchao-shishu", "name": "清炒时蔬", "alias": ["炒青菜", "炒时蔬"], "category": "veg", "unit": "g", "kcal": 70, "protein": 2.0, "fat": 5.0, "carb": 4.0, "sodium": 450, "fiber": 2.0, "source": "按标准菜谱估算" },
     { "id": "suanrong-xilanhua", "name": "蒜蓉西兰花", "category": "veg", "unit": "g", "kcal": 80, "protein": 3.0, "fat": 6.0, "carb": 4.0, "sodium": 400, "fiber": 2.6, "source": "按标准菜谱估算" },
@@ -82,6 +86,28 @@
     { "id": "hongshao-doufu", "name": "红烧豆腐", "category": "veg", "unit": "g", "kcal": 140, "protein": 9.0, "fat": 9.0, "carb": 6.0, "sodium": 800, "source": "按标准菜谱估算" },
     { "id": "zhacai-rousi", "name": "榨菜肉丝", "category": "veg", "unit": "g", "kcal": 130, "protein": 7.0, "fat": 9.0, "carb": 5.0, "sodium": 1500, "source": "按标准菜谱估算" },
     { "id": "chao-yumi", "name": "炒玉米粒", "alias": ["玉米粒"], "category": "veg", "unit": "g", "kcal": 110, "protein": 3.5, "fat": 4.0, "carb": 16.0, "sodium": 350, "source": "按标准菜谱估算" },
+    { "id": "juancai", "name": "卷心菜", "alias": ["包菜", "圆白菜", "甘蓝", "莲花白"], "category": "veg", "unit": "g", "kcal": 24, "protein": 1.5, "fat": 0.2, "carb": 4.6, "sodium": 27.2, "source": "中国食物成分表·中国疾控中心营养与健康所（网页 463）" },
+    { "id": "shengcai", "name": "生菜", "alias": ["叶用莴苣"], "category": "veg", "unit": "g", "kcal": 15, "protein": 1.3, "fat": 0.3, "carb": 2, "sodium": 32.8, "source": "中国食物成分表·中国疾控中心营养与健康所（网页 483）" },
+    { "id": "youmaicai", "name": "油麦菜", "alias": ["牛俐生菜"], "category": "veg", "unit": "g", "kcal": 16, "protein": 1.4, "fat": 0.4, "carb": 2.1, "sodium": 80, "source": "中国食物成分表·中国疾控中心营养与健康所（网页 482）" },
+    { "id": "dabaicai", "name": "大白菜", "alias": ["白菜", "黄芽白"], "category": "veg", "unit": "g", "kcal": 18, "protein": 1.5, "fat": 0.1, "carb": 3.2, "sodium": 57.5, "source": "中国食物成分表·中国疾控中心营养与健康所（网页 450）" },
+    { "id": "xiaobaicai", "name": "小白菜", "category": "veg", "unit": "g", "kcal": 17, "protein": 1.5, "fat": 0.3, "carb": 2.7, "sodium": 73.5, "source": "中国食物成分表·中国疾控中心营养与健康所（网页 452）" },
+    { "id": "fanqie", "name": "番茄", "alias": ["西红柿"], "category": "veg", "unit": "g", "kcal": 21, "protein": 0.9, "fat": 0.2, "carb": 4, "sodium": 5, "source": "中国食物成分表·中国疾控中心营养与健康所（网页 405）" },
+    { "id": "huanggua", "name": "黄瓜", "alias": ["胡瓜", "青瓜"], "category": "veg", "unit": "g", "kcal": 16, "protein": 0.8, "fat": 0.2, "carb": 2.9, "sodium": 4.9, "source": "中国食物成分表·中国疾控中心营养与健康所（网页 422）" },
+    { "id": "huluobo", "name": "胡萝卜", "alias": ["红萝卜", "丁香萝卜"], "category": "veg", "unit": "g", "kcal": 39, "protein": 1, "fat": 0.2, "carb": 8.8, "sodium": 71.4, "source": "中国食物成分表·中国疾控中心营养与健康所（网页 380）" },
+    { "id": "bailuobo", "name": "白萝卜", "alias": ["萝卜", "莱菔"], "category": "veg", "unit": "g", "kcal": 23, "protein": 0.9, "fat": 0.1, "carb": 5, "sodium": 61.8, "source": "中国食物成分表·中国疾控中心营养与健康所（网页 371）" },
+    { "id": "donggua", "name": "冬瓜", "category": "veg", "unit": "g", "kcal": 12, "protein": 0.4, "fat": 0.2, "carb": 2.6, "sodium": 1.8, "source": "中国食物成分表·中国疾控中心营养与健康所（网页 419）" },
+    { "id": "kugua", "name": "苦瓜", "alias": ["凉瓜", "癞瓜"], "category": "veg", "unit": "g", "kcal": 22, "protein": 1, "fat": 0.1, "carb": 4.9, "sodium": 2.5, "source": "中国食物成分表·中国疾控中心营养与健康所（网页 425）" },
+    { "id": "sigua", "name": "丝瓜", "category": "veg", "unit": "g", "kcal": 22, "protein": 1, "fat": 0.2, "carb": 4.2, "sodium": 2.6, "source": "中国食物成分表·中国疾控中心营养与健康所（网页 429）" },
+    { "id": "nangua", "name": "南瓜", "alias": ["倭瓜", "番瓜"], "category": "veg", "unit": "g", "kcal": 24, "protein": 0.7, "fat": 0.1, "carb": 5.3, "sodium": 0.8, "source": "中国食物成分表·中国疾控中心营养与健康所（网页 426）" },
+    { "id": "xihulu", "name": "西葫芦", "alias": ["角瓜"], "category": "veg", "unit": "g", "kcal": 19, "protein": 0.8, "fat": 0.2, "carb": 3.8, "sodium": 5, "source": "中国食物成分表·中国疾控中心营养与健康所（网页 431）" },
+    { "id": "qingjiao", "name": "青椒", "alias": ["甜椒", "灯笼椒", "柿子椒", "菜椒"], "category": "veg", "unit": "g", "kcal": 25, "protein": 1, "fat": 0.2, "carb": 5.4, "sodium": 3.3, "source": "中国食物成分表·中国疾控中心营养与健康所（网页 410）" },
+    { "id": "yangcong", "name": "洋葱", "alias": ["葱头", "圆葱"], "category": "veg", "unit": "g", "kcal": 41, "protein": 1.1, "fat": 0.2, "carb": 9, "sodium": 4.4, "source": "中国食物成分表·中国疾控中心营养与健康所（网页 444）" },
+    { "id": "jiucai", "name": "韭菜", "category": "veg", "unit": "g", "kcal": 29, "protein": 2.4, "fat": 0.4, "carb": 4.6, "sodium": 8.1, "source": "中国食物成分表·中国疾控中心营养与健康所（网页 445）" },
+    { "id": "jinzhengu", "name": "金针菇", "alias": ["智力菇"], "category": "veg", "unit": "g", "kcal": 32, "protein": 2.4, "fat": 0.4, "carb": 6, "sodium": 4.3, "source": "中国食物成分表·中国疾控中心营养与健康所（网页 575）" },
+    { "id": "xianggu-xian", "name": "鲜香菇", "alias": ["香菇", "香蕈", "冬菇"], "category": "veg", "unit": "g", "kcal": 26, "protein": 2.2, "fat": 0.3, "carb": 5.2, "sodium": 1.4, "source": "中国食物成分表·中国疾控中心营养与健康所（网页 584）" },
+    { "id": "pinggu", "name": "平菇", "alias": ["青蘑"], "category": "veg", "unit": "g", "kcal": 24, "protein": 1.9, "fat": 0.3, "carb": 4.6, "sodium": 3.8, "source": "中国食物成分表·中国疾控中心营养与健康所（网页 581）" },
+    { "id": "xingbaogu", "name": "杏鲍菇", "category": "veg", "unit": "g", "kcal": 35, "protein": 1.3, "fat": 0.1, "carb": 8.3, "sodium": 3.5, "source": "中国食物成分表·中国疾控中心营养与健康所（网页 602）" },
+    { "id": "xilanhua", "name": "西兰花", "alias": ["绿菜花"], "category": "veg", "unit": "g", "kcal": 36, "protein": 4.1, "fat": 0.6, "carb": 4.3, "sodium": 18.8, "source": "中国食物成分表·中国疾控中心营养与健康所（网页 465）" },
 
     { "id": "jidan-zhu", "name": "鸡蛋（煮）", "alias": ["水煮蛋", "白煮蛋", "鸡蛋"], "category": "protein", "unit": "g", "kcal": 144, "protein": 13.3, "fat": 8.8, "carb": 2.8, "sodium": 132, "source": "通用成分值（煮）" },
     { "id": "jiandan", "name": "煎蛋", "alias": ["荷包蛋", "煎鸡蛋"], "category": "protein", "unit": "g", "kcal": 200, "protein": 13.0, "fat": 15.0, "carb": 1.0, "sodium": 400, "source": "按标准菜谱估算（含煎油）" },

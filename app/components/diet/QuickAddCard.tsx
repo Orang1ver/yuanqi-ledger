@@ -45,10 +45,11 @@ type Row = {
   removed: boolean;
 };
 
-/** 没匹配上的行挂什么标签。四种原因对应四种出路，标签就该不一样 */
+/** 没匹配上的行挂什么标签。五种原因对应五种出路，标签就该不一样 */
 const MISSING_BADGE: Record<MissingReason, { text: string; cls: string }> = {
   "no-name": { text: "缺个名字", cls: "yq-badge-info" },
   meal: { text: "要具体点", cls: "yq-badge-info" },
+  generic: { text: "太笼统", cls: "yq-badge-info" },
   "no-calorie": { text: "不必记账", cls: "yq-badge-primary" },
   "not-found": { text: "库里没有", cls: "yq-badge-accent" },
 };
