@@ -17,6 +17,15 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.7.3",
+    date: "2026-09-18",
+    highlights: [
+      "「一碗粥」「一碗饺子」这些终于写清了是煮好后的重量，不用再猜",
+      "新增一道检查：带做法口径的食物用「碗 / 份 / 盘」时必须标明生熟",
+      "只补了说明，没有改动任何一个克数或热量",
+    ],
+  },
+  {
     version: "0.7.2",
     date: "2026-09-18",
     highlights: [

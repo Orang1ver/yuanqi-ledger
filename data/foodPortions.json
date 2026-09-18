@@ -115,17 +115,17 @@
       { "label": "一碗", "grams": 250, "range": [150, 350], "isDefault": true, "note": "指煮熟 / 泡发后的重量" }
     ] },
     { "unit": "碗", "match": ["粥", "汤"], "portions": [
-      { "label": "一碗", "grams": 300, "range": [200, 400], "isDefault": true }
+      { "label": "一碗", "grams": 300, "range": [200, 400], "isDefault": true, "note": "指煮好盛出来的重量；下锅前的生米只有四五十克" }
     ] },
     { "unit": "碗", "match": ["饺子", "馄饨", "云吞"], "portions": [
-      { "label": "一碗", "grams": 250, "range": [150, 350], "isDefault": true }
+      { "label": "一碗", "grams": 250, "range": [150, 350], "isDefault": true, "note": "指煮好沥干后的重量，约 12 个中等饺子" }
     ] },
     { "unit": "碗", "match": ["豆腐脑", "豆花", "凉粉", "凉面", "热干面"], "portions": [
       { "label": "一碗", "grams": 300, "range": [200, 450], "isDefault": true }
     ] },
 
     { "unit": "盘", "match": ["时蔬", "青菜", "菜", "豆腐", "茄子", "豆角", "土豆丝", "西兰花", "地三鲜", "香锅", "海带丝", "木耳", "豆芽"], "portions": [
-      { "label": "一盘", "grams": 250, "range": [150, 400], "isDefault": true }
+      { "label": "一盘", "grams": 250, "range": [150, 400], "isDefault": true, "note": "餐馆一盘菜的量，按可食部分算" }
     ] },
 
     { "unit": "份", "match": ["挂面", "干面条", "面条（干）", "米粉（干）", "干米粉", "粉丝（干）", "粉条", "红薯粉丝"], "portions": [
@@ -135,7 +135,7 @@
       { "label": "一份", "grams": 200, "range": [150, 300], "isDefault": true, "note": "指煮熟 / 泡发后的重量" }
     ] },
     { "unit": "份", "match": ["饺子", "馄饨", "云吞"], "portions": [
-      { "label": "一份", "grams": 200, "range": [150, 300], "isDefault": true }
+      { "label": "一份", "grams": 200, "range": [150, 300], "isDefault": true, "note": "指煮好沥干后的重量，约 10 个中等饺子" }
     ] },
     { "unit": "份", "match": ["西瓜", "苹果", "葡萄", "水果"], "portions": [
       { "label": "一份", "grams": 200, "range": [100, 350], "isDefault": true }

@@ -128,10 +128,30 @@ if (SELFTEST) {
   }
   PORTIONS.rules.splice(dryBowlIdx, 1);
 
+  /*
+   * 第四处破坏，喂给「生熟口径必须写明」那条检查。
+   *
+   * 刻意挑一条**本来有 note** 的规则去把 note 抹掉，而不是抽掉整条规则：
+   * 抽掉规则的话，「白粥」会变成"一条规则都命中不了"，那就变成 ④b 在报 ——
+   * 测到的不是 ④d（地雷 23：破坏要走到被测的那一层）。
+   *
+   * 挑 `碗[粥,汤]` 是因为它命中的「白粥 / 小米粥」source 都写着「煮」，
+   * 正是这条检查存在的理由。
+   */
+  const congeeDefault = PORTIONS.rules.find(
+    (r) => r.unit === "碗" && (r.match ?? []).includes("粥"),
+  )?.portions.find((p) => p.isDefault);
+  if (!congeeDefault?.note) {
+    console.error("✗ 自证失败：找不到碗的粥规则默认档（或它本来就没有 note）—— 破坏点没落到位");
+    process.exit(2);
+  }
+  delete congeeDefault.note;
+
   sabotaged =
     `把「${victim.name}」的脂肪从 34 改成 3.4；` +
     "并塞进一条没有任何份量规则能命中的食物「自证用孤儿食物」；" +
-    "再抽掉碗的干重专门规则，让「挂面」掉回熟重的 250g";
+    "再抽掉碗的干重专门规则，让「挂面」掉回熟重的 250g；" +
+    "最后抹掉「一碗粥」那条规则的 note";
 }
 
 // ---------- 收集问题 ----------
@@ -349,6 +369,54 @@ for (const f of LIBRARY.items ?? []) {
   }
 }
 
+// ---------- ④d 生熟有歧义的口径必须写明 ----------
+
+/*
+ * ④c 管的是「干重食物别用熟重克数」这一种；这条管更宽的一面：
+ * `碗 / 份 / 盘` 下的克数，生熟差异能到两三倍 ——
+ * 一碗白粥 300g（熟）对应下锅的生米只有四五十克，而库里「白粥」的 source 就写着「煮」。
+ *
+ * 规则没有 note 时，用户屏幕上看到的是「300g」，但他**无从知道那是下锅前还是盛出来后**。
+ * 数值本身可能没错，错的是它没有说明自己是什么口径 —— 而这份克数会直接进热量计算。
+ *
+ * 判据刻意与运行时一致（模拟 `resolvePortion` 的先命中先赢）：
+ * 按「食物 × 量词」找那条**真正生效**的规则，而不是"哪条规则提到了它"。
+ * 否则会给一条永远走不到的死规则写说明，而真正的缺口被漏掉 ——
+ * 写这条检查时就踩过一次：`碗[粥,汤]` 的 match 里有个单字「汤」，
+ * 「面条」的别名「清汤面」也算命中它，但面条规则排在它前面，那条粥汤规则永远不会被用到。
+ *
+ * 只查 碗 / 份 / 盘：其余量词（个 / 包 / 杯…）的生熟差异小得多，
+ * 而「一个土豆算生的还是熟的」属于另一件事（份量表没有这个粒度）。
+ */
+const AMBIGUOUS_UNITS = ["碗", "份", "盘"];
+/** source 里出现这些字，说明这条数值自带做法口径，克数就有生熟 / 干湿歧义 */
+const COOKED_SOURCE_RE = /煮|蒸|炒|油炸|烤|煎|炖|熟|干|卤|炸|焖|烧/;
+let ambiguityChecked = 0;
+
+for (const f of LIBRARY.items ?? []) {
+  const names = [f.name, ...(f.alias ?? [])].filter(Boolean);
+  if (!COOKED_SOURCE_RE.test(f.source ?? "")) continue;
+
+  for (const unit of AMBIGUOUS_UNITS) {
+    const rule = (PORTIONS.rules ?? []).find(
+      (r) => r.unit === unit && (r.match ?? []).some((m) => names.some((n) => n.includes(m))),
+    );
+    if (!rule) continue;
+
+    const portion = rule.portions.find((p) => p.isDefault) ?? rule.portions[0];
+    ambiguityChecked++;
+    if (portion?.note) continue;
+
+    fail(
+      `${f.id} (${f.name}) · 量词「${unit}」`,
+      `source 是「${f.source}」，说明这个数值自带做法口径；但它命中的份量规则` +
+        `「${portion?.label ?? "?"}」= ${portion?.grams}g 没写这个克数指什么 —— ` +
+        "生熟 / 干湿能差两三倍，用户看不出这 300g 是下锅前还是盛出来后。" +
+        "修法：给这条规则的默认档补一句 note（**只说明口径，不动克数**）",
+    );
+  }
+}
+
 // ---------- ⑤ 体积预算 ----------
 
 const rawBytes = foodsFile.raw.length;
@@ -383,6 +451,7 @@ function report() {
       `（酒类含乙醇、热量低于 ${CLOSURE_KCAL_FLOOR} kcal 的条目算式不适用）`,
   );
   console.log(`干重口径：检查了 ${dryCombos} 个「干重食物 × 量词」组合 —— 口径必须写明是干重`);
+  console.log(`生熟口径：检查了 ${ambiguityChecked} 个「带做法口径的食物 × 碗/份/盘」组合 —— 必须写明生熟`);
 
   if (!problems.length) {
     console.log("\n✓ 没发现问题。");
@@ -402,16 +471,16 @@ function report() {
 const failed = report();
 
 if (SELFTEST) {
-  // 三处破坏各对应一条检查，三条都必须在 problems 里出现才算自证通过。
+  // 四处破坏各对应一条检查，四条都必须在 problems 里出现才算自证通过。
   // 只断言"有问题"是不够的：那样其中一条检查坏掉了也照样绿。
-  const expectKinds = ["闭合校验不过", "没有任何份量规则命中", "干重数据"];
+  const expectKinds = ["闭合校验不过", "没有任何份量规则命中", "干重数据", "没写这个克数指什么"];
   const missingKinds = expectKinds.filter((k) => !problems.some((p) => p.msg.includes(k)));
   if (missingKinds.length) {
     console.error(`\n✗ 自证失败：故意改坏了数据，这些检查却没拦下 —— ${missingKinds.join("、")}。`);
     console.error("  永远通过的闸门等于没有闸门，先去修那条检查。");
     process.exit(2);
   }
-  console.log(`\n✓ 自证通过：三处破坏都被对应的检查拦下了（共 ${problems.length} 个问题）。`);
+  console.log(`\n✓ 自证通过：四处破坏都被对应的检查拦下了（共 ${problems.length} 个问题）。`);
   console.log("  永远通过的闸门等于没有闸门，所以这一步不能省。");
   process.exit(0);
 }
