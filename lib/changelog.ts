@@ -17,6 +17,15 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.5.2",
+    date: "2026-09-18",
+    highlights: [
+      "「米饭和红烧肉」现在真的记成两条（以前红烧肉那一份会凭空消失）",
+      "「一打鸡蛋」= 12 个；「饺子15个」这种份量写在后面的说法也认了",
+      "「两三个鸡蛋」按保守值记成 2 并标成估算 —— 约数不再冒充精确数字",
+    ],
+  },
+  {
     version: "0.5.1",
     date: "2026-09-18",
     highlights: [

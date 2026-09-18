@@ -421,14 +421,69 @@ describe("浅解析", () => {
     assert.equal(parseFragment("半碗米饭").amount, 0.5);
   });
 
-  it("认不出来的中文数量词要退回，绝不硬猜、更不许产出 NaN", () => {
-    // 「两三」含糊相加就是 5，而用户的意思是「两三个」。取中值还是保守值
-    // 是另一个决定（路线图 P5.4），在那之前**不认**比认错强 —— 退回单字「两」。
-    assert.equal(parseFragment("两三个鸡蛋").amount, 2);
+  it("约数连写取**保守**的那个，并标成约数：「两三个鸡蛋」= 2", () => {
+    // 含糊相加（「两三」→ 5）比取保守值更糟：那会**系统性高估**，而用户说的是"大概"。
+    const p = parseFragment("两三个鸡蛋");
+    assert.equal(p.amount, 2);
+    assert.equal(p.unit, "个");
+    assert.equal(p.name, "鸡蛋");
+    assert.equal(p.approximate, true, "约数必须标出来 —— 屏幕上不该出现一个看起来精确的 2");
+
+    assert.equal(parseFragment("三四个鸡蛋").amount, 3);
+    assert.equal(parseFragment("三四个鸡蛋").approximate, true);
+    // 不是约数的不要误标
+    assert.equal(parseFragment("两个鸡蛋").approximate, undefined);
+    assert.equal(parseFragment("十五个饺子").approximate, undefined);
+  });
+
+  it("数量词认不出来时退回，绝不硬猜、更不许产出 NaN", () => {
     // 「一半」不是 1.5。认不出来时整串退回当食物名，amount 必须仍是有限数
     // —— 一旦这里产出 NaN，它会一路写进 DietEntry.amount，变成账本里谁也解释不了的数
     assert.ok(Number.isFinite(parseFragment("一半苹果").amount));
     assert.ok(Number.isFinite(parseFragment("十五个饺子").amount));
+    assert.ok(Number.isFinite(parseFragment("两三个鸡蛋").amount));
+  });
+
+  it("「和 / 跟 / 加 / 以及 / 还有」与顿号是一回事", () => {
+    // 回归：splitFragments 原来只按标点与空白切，「米饭和红烧肉」整段进 parseFragment，
+    // 只解析出「米饭」—— 红烧肉那一份热量凭空消失，而界面上看起来一切正常。
+    assert.deepEqual(splitFragments("米饭和红烧肉"), ["米饭", "红烧肉"]);
+    assert.deepEqual(splitFragments("米饭跟红烧肉"), ["米饭", "红烧肉"]);
+    assert.deepEqual(splitFragments("米饭还有红烧肉"), ["米饭", "红烧肉"]);
+    assert.deepEqual(splitFragments("米饭以及红烧肉"), ["米饭", "红烧肉"]);
+    assert.deepEqual(splitFragments("米饭加红烧肉"), ["米饭", "红烧肉"]);
+    // 连着三样也要全切开
+    assert.deepEqual(splitFragments("米饭和红烧肉还有青菜"), ["米饭", "红烧肉", "青菜"]);
+    // 前后不是汉字的不切 —— 免得把「加油」这类词切一半
+    assert.deepEqual(splitFragments("加油"), ["加油"]);
+  });
+
+  it("「一打」= 12 个：固定的计数单位，在解析出口就展开", () => {
+    // 回归：「一打鸡蛋」原来整段认不出来 ——「打」既不在量词表里、也不是数字。
+    // 展开成「个」之后走的是份量表里现成的 `个[鸡蛋]`，数字来路没变。
+    const p = parseFragment("一打鸡蛋");
+    assert.equal(p.amount, 12);
+    assert.equal(p.unit, "个");
+    assert.equal(p.name, "鸡蛋");
+    assert.equal(parseFragment("半打鸡蛋").amount, 6);
+    assert.equal(parseFragment("两打鸡蛋").amount, 24);
+  });
+
+  it("份量写在后面对：「饺子15个」", () => {
+    // 回归：中文里份量写在后面一样常见，原来只认前置 ——
+    // 「饺子15个」退化成"没写份量"→ 分类兜底 200g（真实 300g），界面上看不出任何异常。
+    const p = parseFragment("饺子15个");
+    assert.equal(p.amount, 15);
+    assert.equal(p.unit, "个");
+    assert.equal(p.name, "饺子");
+    assert.equal(parseFragment("饺子十五个").amount, 15);
+    assert.equal(parseFragment("米饭一碗").unit, "碗");
+    assert.equal(parseFragment("米饭一碗").name, "米饭");
+    // 空白版本要能并回一段
+    assert.deepEqual(splitFragments("饺子 15个"), ["饺子15个"]);
+    // 但不能把「两样东西」并起来
+    assert.deepEqual(splitFragments("苹果 香蕉"), ["苹果", "香蕉"]);
+    assert.deepEqual(splitFragments("一包薯片 一杯奶茶"), ["一包薯片", "一杯奶茶"]);
   });
 });
 
@@ -448,6 +503,34 @@ describe("一句话记录 · 兜底不许算错", () => {
     assert.equal(c.food?.name, "饺子");
     assert.equal(c.grams, 300);
     assert.equal(c.missing, false);
+  });
+
+  it("「米饭和红烧肉」记成两条（曾经只记下米饭，红烧肉那一份凭空消失）", () => {
+    const cs = resolveText("米饭和红烧肉");
+    assert.equal(cs.length, 2);
+    assert.equal(cs[0].food?.name, "米饭");
+    assert.equal(cs[1].food?.name, "红烧肉");
+  });
+
+  it("「一打鸡蛋」是 12 个（一打 = 12 是固定的，不是跟食物相关的份量）", () => {
+    const [c] = resolveText("一打鸡蛋");
+    assert.equal(c.amount, 12);
+    assert.equal(c.unitLabel, "个");
+    assert.equal(c.grams, 660); // 12 × 个[鸡蛋] 55g
+  });
+
+  it("「饺子15个」记成 300g（份量写在后面对，曾经走兜底成 200g）", () => {
+    const [c] = resolveText("饺子15个");
+    assert.equal(c.food?.name, "饺子");
+    assert.equal(c.grams, 300);
+    assert.equal(c.unitLabel, "个");
+  });
+
+  it("约数会被标成估算，并在依据里说清取的是哪个值", () => {
+    const [c] = resolveText("两三个鸡蛋");
+    assert.equal(c.amount, 2);
+    assert.equal(c.estimated, true, "约数没标估算，屏幕上就会出现一个看起来精确的 2");
+    assert.match(c.basis, /约数/);
   });
 
   it("「一包 70g 的薯片」记成薯片 70g（曾经记成肉包 200g）", () => {

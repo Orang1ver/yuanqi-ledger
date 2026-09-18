@@ -119,6 +119,19 @@ export function matchFood(name: string): FoodItem | undefined {
   return searchFoods(q, 1)[0];
 }
 
+/**
+ * 约数（「两三个」）要标成估算，并在依据里说清取的是哪个值。
+ *
+ * 用户说的是"大概"，屏幕上就不该出现一个看起来精确的 2 —— 那正是"假精确"。
+ * 取的是两个数里小的那个（宁低不高），理由见 `parse.ts` 的 `parseCnAmount`。
+ */
+function withApprox(c: QuickCandidate, parsed: { amount: number; approximate?: boolean }): QuickCandidate {
+  if (!parsed.approximate) return c;
+  c.estimated = true;
+  if (c.basis) c.basis = `「${fmt(parsed.amount)}」是约数里取保守的那个；${c.basis}`;
+  return c;
+}
+
 function resolveOne(fragment: string, altLimit: number): QuickCandidate {
   const parsed = parseFragment(fragment);
   const c: QuickCandidate = {
@@ -139,7 +152,7 @@ function resolveOne(fragment: string, altLimit: number): QuickCandidate {
     c.missing = true;
     c.reason = "no-name";
     c.explain = `「${fragment}」里只有份量、没说是吃什么 —— 补上食物名就能算`;
-    return c;
+    return withApprox(c, parsed);
   }
 
   const food = matchFood(parsed.name);
@@ -150,7 +163,7 @@ function resolveOne(fragment: string, altLimit: number): QuickCandidate {
     // 仍然给几个相近的让用户挑，别让他从零搜。
     // 整餐的说法也给：说「吃了顿饭」的人多半要的是主食，摆个「米饭」出来比让他自己搜强。
     c.alternatives = searchFoods(parsed.name, altLimit);
-    return c;
+    return withApprox(c, parsed);
   }
 
   c.food = food;
@@ -163,14 +176,14 @@ function resolveOne(fragment: string, altLimit: number): QuickCandidate {
     const per = parsed.perUnitGrams;
     c.grams = parsed.amount * per;
     c.basis = `你说的「${fmt(parsed.amount)}${parsed.unit ?? ""} ${fmt(per)}g」= ${fmt(parsed.amount)} × ${fmt(per)}g = ${fmt(c.grams)}g`;
-    return c;
+    return withApprox(c, parsed);
   }
 
   if (parsed.unit === "克") {
     c.grams = parsed.amount;
     c.unitLabel = "克";
     c.basis = `你自己给了克数 ${parsed.amount}g`;
-    return c;
+    return withApprox(c, parsed);
   }
 
   if (parsed.unit) {
@@ -180,14 +193,14 @@ function resolveOne(fragment: string, altLimit: number): QuickCandidate {
       c.rule = hit.rule;
       const range = hit.portion.range ? `（常见 ${hit.portion.range[0]}~${hit.portion.range[1]}g）` : "";
       c.basis = `${fmt(parsed.amount)} × 「${hit.portion.label}」${hit.grams}g = ${fmt(c.grams)}g${range}`;
-      return c;
+      return withApprox(c, parsed);
     }
     // 份量表里没有这个组合 —— 按分类兜底，并且**明确标成估算**
     c.grams = fallbackGrams(food) * parsed.amount;
     c.estimated = true;
     c.unitLabel = "份";
     c.basis = `份量表里没有「${parsed.unit}」这条，按分类兜底 ${fallbackGrams(food)}g × ${fmt(parsed.amount)} = ${fmt(c.grams)}g（估算）`;
-    return c;
+    return withApprox(c, parsed);
   }
 
   // 没写份量
@@ -195,7 +208,7 @@ function resolveOne(fragment: string, altLimit: number): QuickCandidate {
   c.estimated = true;
   c.unitLabel = "份";
   c.basis = `没写份量，按分类兜底 ${fallbackGrams(food)}g = ${fmt(c.grams)}g（估算）`;
-  return c;
+  return withApprox(c, parsed);
 }
 
 /** 去掉小数点后多余的 0，让依据读起来像人话 */
