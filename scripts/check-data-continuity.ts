@@ -232,6 +232,41 @@ async function main() {
     return `${r.totalDays} 天有记录，喝水达标 ${r.waterDays} 天，步数达标 ${r.stepsDays} 天，两项都达标 ${r.bothDays} 天`;
   });
 
+  // 「一顿饭」预设引用的食物 id 必须都真实存在 —— 预设里一旦出现死引用，
+  // 用户点下去就是一条落不下来的记录，这个坑要在这里拦掉。
+  const { MEAL_PRESETS, mealPresetFoodIds } = await import("../lib/mealPresets");
+  const { foodById } = await import("../lib/nutrition/library");
+
+  // 自证这个关卡也会拦人：把第一个预设的第一个食物 id 改成库里不存在的，
+  // 「一顿饭预设完整性」必须报 ✗（配合上面的健康档案破坏一起自证整条闸门不是摆设）。
+  if (process.env.YQ_SELFTEST === "1") {
+    (MEAL_PRESETS[0].items[0] as { foodId: string }).foodId = "yq-selftest-missing";
+    console.log("[自证模式] 已故意破坏一个预设食物 id，预期「一顿饭预设完整性」报 ✗");
+  }
+
+  check("一顿饭预设完整性", () => {
+    let bad = 0;
+    for (const p of MEAL_PRESETS) {
+      if (p.items.length < 2) {
+        console.error(`✗ 预设「${p.label}」不足 2 条`);
+        bad++;
+      }
+      for (const it of p.items) {
+        if (!foodById(it.foodId)) {
+          console.error(`✗ 预设「${p.label}」引用了不存在的食物 ${it.foodId}`);
+          bad++;
+        }
+        if (!(it.grams > 0)) {
+          console.error(`✗ 预设「${p.label}」克数非法：${it.grams}`);
+          bad++;
+        }
+      }
+    }
+    assert.equal(bad, 0, `一顿饭预设有 ${bad} 处问题`);
+    const total = MEAL_PRESETS.reduce((s, p) => s + p.items.length, 0);
+    return `${MEAL_PRESETS.length} 个预设 / ${total} 条食材 / ${mealPresetFoodIds().length} 个唯一食物，全部可解析`;
+  });
+
   // ---------- 输出 ----------
 
   const pad = Math.max(...results.map((r) => [...r.name].length)) + 2;

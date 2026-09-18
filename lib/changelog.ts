@@ -17,6 +17,14 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.4.0",
+    date: "2026-09-18",
+    highlights: [
+      "记一笔多了「一顿饭」：选盖饭 / 一菜一汤 / 两菜一汤 / 小火锅 / 丰盛，一次记下一整餐的多条记录",
+      "选好搭配后可以逐条删掉不吃的、改克数，再选餐次一次落下",
+    ],
+  },
+  {
     version: "0.3.0",
     date: "2026-09-18",
     highlights: [

@@ -79,20 +79,34 @@ export type DietEntryInput = {
 };
 
 /**
+ * 一次记 N 条。内部只读一次全量、拼一次、写一次 ——
+ * 批量场景若像 `recordDietEntry` 那样每条都 load+write 全量，N 条就是 N 次整库读写。
+ * 每条仍走 `makeDietEntry` → `nutritionOf`，营养数字来路不变。
+ */
+export function recordDietEntries(inputs: DietEntryInput[]): DietEntry[] {
+  if (inputs.length === 0) return [];
+  const now = Date.now();
+  const base = loadDietEntries();
+  const added = inputs.map((input) => {
+    const time = input.time || approxTimeForSlot(input.mealSlot);
+    return makeDietEntry({
+      ...input,
+      time,
+      mealSlot: input.mealSlot ?? mealSlotFromTime(time),
+      id: uuid(),
+      createdAt: now,
+    });
+  });
+  writeJSON(KEYS.dietLog, [...base, ...added].sort(byRecent));
+  return added;
+}
+
+/**
  * 记一条。`id` 与 `createdAt` 在这里生成，营养值由 `makeDietEntry` 从克数算出 ——
  * 数字只有这一条来路，界面与模型都塞不进来。
  */
 export function recordDietEntry(input: DietEntryInput): DietEntry {
-  const time = input.time || approxTimeForSlot(input.mealSlot);
-  const entry = makeDietEntry({
-    ...input,
-    time,
-    mealSlot: input.mealSlot ?? mealSlotFromTime(time),
-    id: uuid(),
-    createdAt: Date.now(),
-  });
-  writeJSON(KEYS.dietLog, [...loadDietEntries(), entry].sort(byRecent));
-  return entry;
+  return recordDietEntries([input])[0];
 }
 
 /**

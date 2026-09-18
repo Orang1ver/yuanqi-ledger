@@ -411,6 +411,118 @@ async function checkMealSlot(page, baseUrl, failures) {
   }
 }
 
+// ---------- 「一顿饭」预设能不能真落多条 ----------
+
+/**
+ * 点「一顿饭 → 两菜一汤」，验证一次落 4 条到选中的餐次。
+ *
+ * 为什么要单独过一遍真实 DOM：预设展开 → rowsFromPreset → saveAll(批量)
+ * → recordDietEntries → 分组渲染，中间任何一环把「批量」丢了（比如退化成逐条
+ * 或只记了第一条），最后都表现成「这一顿只落了一条」，单测直接调数据层是发现不了的。
+ *
+ * 计数标记用「红烧肉」——它是「两菜一汤」预设独有的食物，且不会被
+ * checkMealSlot 记的「鸡蛋」或其它文本解析误伤，前后计数对比才稳。
+ *
+ * ⚠️ 自证口径与 checkMealSlot 一致：先读默认选中餐次、再刻意选一个不同的，
+ * 避免「按时间兜底」把丢餐次的 bug 救回来。
+ */
+async function checkMealPreset(page, baseUrl, failures) {
+  await goto(page, `${baseUrl}/diet/?preset=${Date.now()}`);
+
+  const r = await evaluate(
+    page,
+    `(async () => {
+      const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+      const box = (slot) => document.querySelector('[role="group"][aria-label="' + slot + '的记录"]');
+      const mark = "红烧肉";
+      const countIn = (slot) => { const b = box(slot); return b ? (b.innerText.match(new RegExp(mark, "g")) || []).length : -1; };
+      const chips = () => {
+        const g = document.querySelector('[role="group"][aria-label="记到哪一餐"]');
+        return g ? [...g.querySelectorAll("button")] : [];
+      };
+
+      const group = document.querySelector('[role="group"][aria-label="记到哪一餐"]');
+      if (!group) return { ok: false, why: "找不到餐次选择" };
+      const all = chips();
+      const picked = all.find((b) => b.getAttribute("aria-pressed") === "true");
+      if (!picked) return { ok: false, why: "没有默认选中餐次" };
+      const guess = picked.innerText.trim();
+      const target = all.map((b) => b.innerText.trim()).find((s) => s && s !== guess);
+      if (!target) return { ok: false, why: "找不到与默认不同的餐次" };
+      const targetBox = box(target);
+      if (!targetBox) return { ok: false, why: "找不到「" + target + "」分组" };
+      const before = { [target]: countIn(target), [guess]: countIn(guess) };
+
+      // 选目标餐次
+      const chip = all.find((b) => b.innerText.trim() === target);
+      chip.click();
+      await sleep(60);
+
+      // 点「一顿饭」展开预设面板
+      const mealBtn = [...document.querySelectorAll("button")].find((b) => b.innerText.trim() === "一顿饭");
+      if (!mealBtn) return { ok: false, why: "找不到「一顿饭」按钮" };
+      mealBtn.click();
+      await sleep(80);
+
+      // 点「两菜一汤」
+      const presetBtn = [...document.querySelectorAll("button")].find((b) => b.innerText.trim() === "两菜一汤");
+      if (!presetBtn) return { ok: false, why: "找不到「两菜一汤」预设" };
+      presetBtn.click();
+      await sleep(200);
+
+      // 保存按钮应写着「记到<餐次>· 4 条」
+      const saveBtn = [...document.querySelectorAll("button")].find((b) => b.innerText.includes("记到" + target) && b.innerText.includes("4 条"));
+      if (!saveBtn) return { ok: false, why: "没出现写着「记到" + target + "· 4 条」的保存按钮", guess, target, before };
+      if (saveBtn.disabled) return { ok: false, why: "「记到" + target + "· 4 条」被禁用（预设没展开成 4 条）", guess, target, before };
+      const label = saveBtn.innerText;
+      saveBtn.click();
+      await sleep(350);
+
+      return { ok: true, guess, target, label, before, after: { [target]: countIn(target), [guess]: countIn(guess) } };
+    })()`,
+  );
+
+  if (!r.ok) {
+    failures.push(`一顿饭预设：${r.why}`);
+    console.log(`✗ 一顿饭预设检查没跑成：${r.why}`);
+    return;
+  }
+
+  // 刷新确认持久化
+  await goto(page, `${baseUrl}/diet/?preset2=${Date.now()}`);
+  const after = await evaluate(
+    page,
+    `(() => {
+      const count = (slot) => {
+        const b = document.querySelector('[role="group"][aria-label="' + slot + '的记录"]');
+        return b ? (b.innerText.match(/红烧肉/g) || []).length : -1;
+      };
+      return { [${JSON.stringify(r.target)}]: count(${JSON.stringify(r.target)}), [${JSON.stringify(r.guess)}]: count(${JSON.stringify(r.guess)}) };
+    })()`,
+  );
+
+  const t0 = r.before[r.target];
+  const t1 = r.after[r.target];
+  const t2 = after[r.target];
+  const g0 = r.before[r.guess];
+  const g2 = after[r.guess];
+  const ok = t1 === t0 + 1 && t2 === t0 + 1 && g2 === g0;
+
+  console.log(
+    `${ok ? "✓" : "✗"} 「一顿饭·两菜一汤」一次落下含「红烧肉」的那批到「${r.target}」（按钮「${r.label}」；` +
+      `${r.target} ${t0} → 内存 ${t1} / 刷新后 ${t2}，${r.guess} ${g0} → ${g2}）`,
+  );
+
+  if (t1 !== t0 + 1) {
+    failures.push(`点「两菜一汤」记下后，「${r.target}」组里没新增红烧肉（${t0} → ${t1}）—— 预设没落库或落错了餐次`);
+  } else if (t2 !== t0 + 1) {
+    failures.push(`「${r.target}」组刷新后红烧肉对不上（${t0} → ${t2}）—— 预设批量落库没被持久化`);
+  }
+  if (g2 !== g0) {
+    failures.push(`「${r.guess}」组凭空多了红烧肉（${g0} → ${g2}）—— 用户选的餐次被忽略`);
+  }
+}
+
 // ---------- 按需拉起预览服务 ----------
 //
 // 冒烟测试依赖一个静态服务把 out/ 挂在子路径下。要求人先手动起服务，
@@ -696,6 +808,9 @@ try {
 
   // 同理：这一条会真的往账本里记一条鸡蛋，必须放在所有只读断言之后
   await checkMealSlot(page, BASE_URL, failures);
+
+  // 这一条会真往账本里记一批「两菜一汤」，同样放在只读断言之后
+  await checkMealPreset(page, BASE_URL, failures);
 
   if (failures.length) {
     console.log(`\n✗ ${failures.length} 个页面没显示出应有的内容（数据来源：${seedLabel}）：`);

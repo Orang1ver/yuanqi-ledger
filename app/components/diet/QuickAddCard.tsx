@@ -22,6 +22,8 @@
 import { useState } from "react";
 import { emitDataChanged } from "@/lib/bus";
 import { mealSlotFromTime, nowHM } from "@/lib/date";
+import { MEAL_PRESETS } from "@/lib/mealPresets";
+import type { MealPreset } from "@/lib/mealPresets";
 import { fallbackGrams, nutritionOf } from "@/lib/nutrition/core";
 import { foodById } from "@/lib/nutrition/library";
 import { defaultPortionOptions, resolveText } from "@/lib/nutrition/quickadd";
@@ -30,7 +32,7 @@ import { categoryLabel } from "@/lib/nutrition/types";
 import type { FoodItem } from "@/lib/nutrition/types";
 import { MEAL_SLOTS } from "@/lib/tags";
 import type { MealSlot } from "@/lib/tags";
-import { frequentFoods, recordDietEntry } from "@/lib/storage";
+import { frequentFoods, recordDietEntries, recordDietEntry } from "@/lib/storage";
 import { FoodSearchDialog } from "./FoodSearchDialog";
 import type { PortionValue } from "./PortionPicker";
 
@@ -97,6 +99,8 @@ export function QuickAddCard({ date }: { date: string }) {
   const [picker, setPicker] = useState<{ food?: FoodItem; query?: string } | null>(null);
   /** 记到哪一餐。默认按现在的钟点猜，用户随时可以改 —— 补录时这个默认值基本是错的 */
   const [slot, setSlot] = useState<MealSlot>(() => mealSlotFromTime(nowHM()));
+  /** 「一顿饭」预设面板是否展开 */
+  const [presetOpen, setPresetOpen] = useState(false);
 
   const frequent = frequentFoods(6)
     .map((f) => foodById(f.foodId))
@@ -104,6 +108,32 @@ export function QuickAddCard({ date }: { date: string }) {
 
   const ready = (rows ?? []).filter((r) => !r.removed && r.food && gramsOf(r) > 0);
   const previewKcal = ready.reduce((a, r) => a + nutritionOf(r.food as FoodItem, gramsOf(r)).kcal, 0);
+
+  /** 把一顿饭预设展开成和文本解析相同的 Row[]，从而复用整套预览 / 删改 / 保存 UI */
+  function rowsFromPreset(p: MealPreset): Row[] {
+    return p.items.map((it) => {
+      const food = foodById(it.foodId);
+      return {
+        c: {
+          raw: "",
+          cleaned: "",
+          amount: 1,
+          unitLabel: "克",
+          name: food?.name ?? it.foodId,
+          grams: it.grams,
+          basis: `预设「${p.label}」`,
+          estimated: false,
+          missing: !food,
+          reason: food ? undefined : ("not-found" as const),
+          alternatives: [],
+        },
+        food,
+        gramsText: String(it.grams),
+        unitLabel: "克",
+        removed: false,
+      };
+    });
+  }
 
   function parse() {
     if (!text.trim()) return;
@@ -132,8 +162,8 @@ export function QuickAddCard({ date }: { date: string }) {
   function saveAll() {
     if (!ready.length) return;
     const time = nowHM();
-    for (const r of ready) {
-      recordDietEntry({
+    recordDietEntries(
+      ready.map((r) => ({
         date,
         time,
         mealSlot: slot,
@@ -142,9 +172,9 @@ export function QuickAddCard({ date }: { date: string }) {
         amount: r.c.amount,
         unitLabel: r.unitLabel,
         grams: gramsOf(r),
-        source: "db",
-      });
-    }
+        source: "db" as const,
+      })),
+    );
     emitDataChanged();
     setMsg(`已记下 ${ready.length} 条 → ${slot}`);
     setRows(null);
@@ -176,6 +206,9 @@ export function QuickAddCard({ date }: { date: string }) {
         <button className="yq-btn yq-btn-sm" onClick={() => setPicker({})}>
           搜索添加
         </button>
+        <button className="yq-btn yq-btn-sm" onClick={() => setPresetOpen((v) => !v)}>
+          一顿饭
+        </button>
       </div>
 
       {/* 先定这是哪一餐：页面下面就是按三餐摆的，记错餐次会让整个结构对不上 */}
@@ -198,6 +231,30 @@ export function QuickAddCard({ date }: { date: string }) {
         ))}
         <span className="yq-hint">默认按现在的时间猜，可以改</span>
       </div>
+
+      {presetOpen && (
+        <div
+          role="group"
+          aria-label="一顿饭搭配"
+          style={{ marginBottom: 10 }}
+        >
+          <p className="yq-label" style={{ marginBottom: 6 }}>选一餐搭配（点一下就展开成多条，可逐条删 / 改克数）</p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {MEAL_PRESETS.map((p) => (
+              <button
+                key={p.key}
+                className="yq-chip"
+                onClick={() => {
+                  setRows(rowsFromPreset(p));
+                  setPresetOpen(false);
+                }}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <textarea
         className="yq-textarea"

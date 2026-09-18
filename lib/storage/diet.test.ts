@@ -53,6 +53,7 @@ import {
   frequentFoods,
   loadDietEntries,
   recordCustomEntry,
+  recordDietEntries,
   recordDietEntry,
 } from "./diet";
 import { nutritionOf, sumNutrition } from "../nutrition/core";
@@ -183,6 +184,51 @@ describe("饮食日记 · 写入与快照", () => {
     const totals = sumNutrition([e]);
     assert.equal(totals.sodiumCoverage, 0);
     assert.equal(totals.values.sodium, undefined);
+  });
+
+  it("recordDietEntries 一次落 N 条，每条营养值来自 nutritionOf 而非硬编码", () => {
+    recordDietEntry({
+      date: "2026-09-17",
+      time: "08:00",
+      food: CHIPS,
+      name: CHIPS.name,
+      amount: 1,
+      unitLabel: "包",
+      grams: 70,
+      source: "db",
+    });
+
+    const added = recordDietEntries([
+      { date: "2026-09-17", time: "12:30", mealSlot: "午餐", food: CHIPS, name: CHIPS.name, amount: 1, unitLabel: "克", grams: 70, source: "db" },
+      { date: "2026-09-17", time: "12:30", mealSlot: "午餐", food: MYSTERY, name: MYSTERY.name, amount: 1, unitLabel: "克", grams: 200, source: "db" },
+    ]);
+
+    const all = loadDietEntries();
+    assert.equal(all.length, 3); // 1 旧 + 2 新
+    assert.equal(added.length, 2);
+    assert.deepEqual(added[0].nutrition, nutritionOf(CHIPS, 70));
+    // 仍走 nutritionOf：未知即 undefined，不是 0
+    assert.equal(added[1].nutrition.sodium, undefined);
+    assert.equal(added[1].nutrition.fiber, undefined);
+  });
+
+  it("recordDietEntries 空输入不落库、返回空数组", () => {
+    assert.deepEqual(recordDietEntries([]), []);
+    assert.equal(loadDietEntries().length, 0);
+  });
+
+  it("recordDietEntry 委托批量后行为不变", () => {
+    const e = recordDietEntry({
+      date: "2026-09-17",
+      time: "20:00",
+      food: CHIPS,
+      name: CHIPS.name,
+      amount: 1,
+      unitLabel: "包",
+      grams: 70,
+      source: "db",
+    });
+    assert.ok(loadDietEntries().some((x) => x.id === e.id));
   });
 });
 
