@@ -17,6 +17,15 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.12.0",
+    date: "2026-09-19",
+    highlights: [
+      "红烧肉分肥瘦、蛋炒饭分油多油少、饺子分大小 —— 同一道菜该给几档就给几档",
+      "每条记录下面写明「当时按哪一档算的」，点一下就能换，热量跟着重算",
+      "觉得哪个数不对？写一句话问它，说不清时给你一段能直接贴给开发者的反馈",
+    ],
+  },
+  {
     version: "0.11.0",
     date: "2026-09-19",
     highlights: [

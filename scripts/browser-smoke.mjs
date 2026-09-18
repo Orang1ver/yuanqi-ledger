@@ -615,6 +615,214 @@ async function checkPortionChip(page, baseUrl, failures) {
   }
 }
 
+// ---------- 已落库那条记录：档位能换 + 「这个数不对？」 ----------
+
+/**
+ * 0.12.0 加在**已落库记录**上的两件事（不是「记一笔」预览框里那排档位）：
+ *   ① 这条当时按哪一档算的，当场能点着换；
+ *   ② 觉得数字不对时写一句质疑 —— **没配 Key 也要能拿到一段可贴的文本**。
+ *
+ * 三件事必须一起钉住：
+ *   1) **换档改的是落库的克数**，不只改屏幕。和 `checkPortionChip` 同一个理由，
+ *      只是对象换成了历史记录（走 `editDietEntry`，营养快照要跟着重算）。
+ *   2) **没填 Key 时入口照样在。** 少了这条路，没配 Key 的用户连「这个数不对」都说不出来。
+ *   3) **那段文本只含这一笔。** 这是脱敏的最后一环：上下文里要是混进健康档案
+ *      或同一顿饭的别的记录，用户一点「复制」就全贴到公开 issue 上了，而屏幕上完全看不出来。
+ *
+ * ⚠️ 前置自己造（地雷 18），而且**故意留一条别的记录 + 一份健康档案**在那儿：
+ * 哪天 `buildIssueText` 顺手把当天汇总也带上，那两样会立刻出现在文本里 ——
+ * 只断言「文本里有饺子」的话，一个把整页 innerText 当反馈文本的实现照样全绿。
+ *
+ * ⚠️ 断言里那两个档案数字是**挑过的**：172 / 61.5 不是这一笔任何数字（15、450、1080、
+ * 1860、30）的子串，所以「文本里出现了 172」只可能是档案真的漏了（地雷 23 的同款顾虑）。
+ */
+async function checkEntryFeedback(page, baseUrl, failures) {
+  const LEAK_NAME = "另一笔不该出现的记录";
+  const LEAK_ALLERGY = "冒烟过敏原XYZ";
+  const LEAK_CONDITION = "冒烟病史XYZ";
+  const LEAK_HEIGHT = 172;
+  const LEAK_WEIGHT = 61.5;
+  const DOUBT = "15 个饺子不该这么多钠";
+
+  await goto(page, `${baseUrl}/diet/?entryfb=${Date.now()}`);
+
+  // ---- 1) 造前置：饺子 15 个（按中号 20g 落库）+ 一条别的记录 + 一份档案，并且先不放 Key ----
+  await evaluate(
+    page,
+    `(() => {
+      const d = new Date();
+      const pad = (n) => (n < 10 ? "0" + n : String(n));
+      const today = d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+      const at = Date.now();
+      localStorage.setItem("recipe.dietLog.v1", JSON.stringify([
+        { id: "smoke-fb-jiaozi", date: today, time: "12:10", mealSlot: "午餐", foodId: "dumpling-pork",
+          name: "饺子", category: "staple", amount: 15, unitLabel: "个", grams: 300,
+          nutrition: { kcal: 720, protein: 24, fat: 30, carb: 84, sodium: 1860, fiber: 4.5 },
+          source: "db", createdAt: at },
+        { id: "smoke-fb-other", date: today, time: "12:11", mealSlot: "午餐",
+          name: ${JSON.stringify(LEAK_NAME)}, amount: 1, unitLabel: "份", grams: 100,
+          nutrition: { kcal: 200, protein: 5, fat: 5, carb: 30, sodium: 100 },
+          source: "custom", createdAt: at + 1 }
+      ]));
+      localStorage.setItem("recipe.healthProfile.v1", JSON.stringify({
+        sex: "男", age: 33, heightCm: ${LEAK_HEIGHT}, weightKg: ${LEAK_WEIGHT},
+        activityLevel: "久坐少动", goal: "维持健康",
+        allergies: ${JSON.stringify(LEAK_ALLERGY)}, conditions: ${JSON.stringify(LEAK_CONDITION)},
+        updatedAt: at
+      }));
+      localStorage.removeItem("recipe.apikeys.v1");
+      window.dispatchEvent(new Event("yq:data-changed"));
+      return today;
+    })()`,
+  );
+
+  // 重新进页面，让服务端渲染出来的就是这份数据（不依赖广播时序）
+  await goto(page, `${baseUrl}/diet/?entryfb2=${Date.now()}`);
+
+  const r = await evaluate(
+    page,
+    `(async () => {
+      const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+      const tierBoxes = () => [...document.querySelectorAll('[data-yq="entry-tier"]')];
+      const jiaozi = () => JSON.parse(localStorage.getItem("recipe.dietLog.v1") || "[]").find((e) => e.id === "smoke-fb-jiaozi");
+
+      for (let i = 0; i < 30 && !tierBoxes().length; i++) await sleep(100);
+      if (!tierBoxes().length) return { ok: false, why: "饺子的那条记录没出现档位行（data-yq=entry-tier）" };
+      if (tierBoxes().length !== 1) {
+        return { ok: false, why: "档位行出现了 " + tierBoxes().length + " 个 —— 只有多档食物才该有这一行",
+                 boxes: tierBoxes().map((b) => b.innerText.trim()) };
+      }
+      const box = tierBoxes()[0];
+      const tierText = box.innerText;
+      const chips = [...box.querySelectorAll("button")].filter((b) => /·\\s*\\d+g\\s*$/.test(b.innerText.trim()));
+      const big = chips.find((b) => b.innerText.includes("大"));
+      if (!big) return { ok: false, why: "档位里没有「大」", chips: chips.map((b) => b.innerText.trim()), tierText };
+      const perUnit = Number((big.innerText.match(/(\\d+)g/) || [])[1]);
+
+      const beforeGrams = jiaozi().grams;
+      const beforeKcal = jiaozi().nutrition.kcal;
+
+      big.click();
+      await sleep(400);
+      const after = jiaozi();
+      const tierTextAfter = tierBoxes().length ? tierBoxes()[0].innerText : "";
+
+      // ---- 「这个数不对？」：没填 Key，应当直接给反馈文本 ----
+      const doubtBtn = document.querySelector('[data-yq="entry-doubt"]');
+      if (!doubtBtn) return { ok: false, why: "记录旁边没有「这个数不对？」入口" };
+      doubtBtn.click();
+      await sleep(200);
+      const panel = document.querySelector('[data-yq="entry-feedback"]');
+      if (!panel) return { ok: false, why: "点了入口没出现写质疑的面板（data-yq=entry-feedback）" };
+      const ta = panel.querySelector('textarea[aria-label="你觉得哪里不对"]');
+      if (!ta) return { ok: false, why: "面板里没有写质疑的输入框" };
+
+      const btnByLabel = () => [...panel.querySelectorAll("button")].find((b) => /生成反馈文本|让它分析一下/.test(b.innerText));
+      const noKeyLabel = btnByLabel() ? btnByLabel().innerText.trim() : "";
+
+      const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value").set;
+      setter.call(ta, ${JSON.stringify(DOUBT)});
+      ta.dispatchEvent(new Event("input", { bubbles: true }));
+      await sleep(120);
+
+      const submitBtn = btnByLabel();
+      if (!submitBtn) return { ok: false, why: "面板里找不到提交按钮", noKeyLabel };
+      if (submitBtn.disabled) return { ok: false, why: "写完质疑了，提交按钮还是禁用的", noKeyLabel };
+      submitBtn.click();
+      await sleep(500);
+
+      const pres = [...panel.querySelectorAll("pre")].map((p) => p.innerText);
+      const issue = pres.length ? pres[pres.length - 1] : "";
+      const copyBtn = [...panel.querySelectorAll("button")].find((b) => /复制这段|已复制/.test(b.innerText));
+      const ghLink = [...panel.querySelectorAll("a")].find((a) => (a.href || "").includes("github.com"));
+
+      // 「复制」点下去必须有反应：要么变成「已复制」，要么明说复制不了。
+      // ⚠️ 这里**不去读剪贴板内容** —— 无头浏览器没焦点时 writeText 本来就常被拒，
+      // 断言真内容会让检查随机变红。要钉的是「不会静默什么都不做」。
+      let copyState = "(没有复制按钮)";
+      if (copyBtn) {
+        copyBtn.click();
+        await sleep(350);
+        const txt = (document.querySelector('[data-yq="entry-feedback"]') || panel).innerText;
+        copyState = txt.includes("已复制") ? "已复制" : (txt.includes("复制不了") ? "明确报错" : "(点了没反应)");
+      }
+
+      return {
+        ok: true, tierText, tierTextAfter, chip: big.innerText.trim(), perUnit,
+        beforeGrams, afterGrams: after.grams, beforeKcal, afterKcal: after.nutrition.kcal,
+        noKeyLabel, issue, copyState, hasLink: !!ghLink,
+        linkHref: ghLink ? ghLink.href : "", panelText: panel.innerText,
+      };
+    })()`,
+  );
+
+  if (!r.ok) {
+    failures.push(`已落库记录的档位与质疑入口：${r.why}`);
+    console.log(`✗ 已落库记录的档位与质疑入口没跑成：${r.why}`);
+    if (r.boxes) console.log(`   实际出现的档位行：${JSON.stringify(r.boxes)}`);
+    if (r.chips) console.log(`   实际出现的档位：${JSON.stringify(r.chips)}`);
+    return;
+  }
+
+  const expectedGrams = Math.round(r.perUnit * 15 * 10) / 10;
+  const saidTier = r.tierText.includes("按「中」算的") && r.tierText.includes("3 档");
+  const tierReflected = r.tierTextAfter.includes("按「大」算的");
+  const gramsChanged = r.afterGrams === expectedGrams && r.afterGrams !== r.beforeGrams;
+  // 换档后营养快照要跟着重算：每克口径不变、总量变大
+  const perGramBefore = r.beforeKcal / r.beforeGrams;
+  const perGramAfter = r.afterKcal / r.afterGrams;
+  const kcalRecalc = Math.abs(perGramAfter - perGramBefore) < 0.005 && r.afterKcal > r.beforeKcal;
+  const noKeyPath = r.noKeyLabel === "生成反馈文本";
+  const hasFacts = r.issue.includes("饺子") && r.issue.includes("15 个") && r.issue.includes(DOUBT);
+  const hasUrl = r.issue.includes("github.com/Orang1ver/yuanqi-ledger/issues");
+  const copyWorks = r.copyState === "已复制" || r.copyState === "明确报错";
+
+  const leaks = [
+    [LEAK_NAME, "同一顿饭里另一条记录的名字"],
+    [LEAK_ALLERGY, "健康档案里的过敏项"],
+    [LEAK_CONDITION, "健康档案里的身体状况"],
+    [String(LEAK_HEIGHT), "健康档案里的身高"],
+    [String(LEAK_WEIGHT), "健康档案里的体重"],
+    ["身高", "健康档案的字段名"],
+    ["体重", "健康档案的字段名"],
+    ["BMI", "健康档案的字段名"],
+  ].filter(([needle]) => r.issue.includes(needle));
+
+  const ok =
+    saidTier && tierReflected && gramsChanged && kcalRecalc && noKeyPath &&
+    hasFacts && hasUrl && copyWorks && leaks.length === 0 && r.hasLink;
+
+  console.log(
+    `${ok ? "✓" : "✗"} 已落库记录：档位写「${saidTier ? "中" : "?"}」→ 点「${r.chip}」后 ` +
+      `克数 ${r.beforeGrams}→${r.afterGrams}（期望 ${expectedGrams}）、` +
+      `热量快照 ${r.beforeKcal}→${r.afterKcal}；质疑入口无 Key 时按钮写「${r.noKeyLabel}」，` +
+      `反馈文本 ${r.issue.length} 字、复制反馈「${r.copyState}」、档案泄漏 ${leaks.length} 处`,
+  );
+
+  if (!saidTier) failures.push(`档位行没写明「按「中」算的」/「3 档」：${r.tierText.replace(/\n/g, " / ")}`);
+  if (!gramsChanged) {
+    failures.push(
+      `点档位后落库克数是 ${r.afterGrams}，期望 ${expectedGrams}（改前 ${r.beforeGrams}）—— 换档没改到落库那个数`,
+    );
+  }
+  if (!kcalRecalc) {
+    failures.push(
+      `换档后热量快照没跟着重算：${r.beforeGrams}g/${r.beforeKcal}kcal → ${r.afterGrams}g/${r.afterKcal}kcal`,
+    );
+  }
+  if (!tierReflected) failures.push("换了档位，说明文字还写着原来那一档 —— 反推没跟上");
+  if (!noKeyPath) {
+    failures.push(`没填 Key 时按钮写的是「${r.noKeyLabel}」—— 没配 Key 的用户该能直接拿到反馈文本`);
+  }
+  if (!hasFacts) failures.push(`反馈文本里缺事实或用户的疑问（${r.issue.length} 字）`);
+  if (!hasUrl) failures.push("反馈文本里没有 GitHub issue 地址，用户不知道往哪贴");
+  if (!copyWorks) failures.push(`点了「复制这段」${r.copyState} —— 复制要么成功、要么明说不行`);
+  if (!r.hasLink) failures.push("反馈文本旁边没有「去 GitHub 提」的链接");
+  for (const [needle, what] of leaks) {
+    failures.push(`反馈文本里漏出了${what}「${needle}」—— 这段是要贴到公开 issue 的`);
+  }
+}
+
 // ---------- 周报的睡眠与心情：没记录时不许显示 0 ----------
 
 /**
@@ -1643,6 +1851,9 @@ try {
 
   // 这一条会**替换**饮食记录（前置自己造），必须排在所有依赖它的检查之后
   await checkImportPreview(page, BASE_URL, failures);
+
+  // 这一条也会**替换**饮食记录并写一份健康档案（前置自己造），同样排在只读断言之后
+  await checkEntryFeedback(page, BASE_URL, failures);
 
   // 这一条会**永久**写掉「安卓安装提示已关闭」，所以排在别的界面检查之后
   await checkAndroidInstallHint(page, BASE_URL, failures);

@@ -408,8 +408,12 @@ curl -s "https://orang1ver.github.io/yuanqi-ledger/sw.js?cb=$(date +%s)" | grep 
 | 周维度达标率 | `lib/weekly.ts` |
 | **睡眠与心情的周聚合** | `lib/wellness.ts` |
 | 体重计算（周均、距健康区间） | `lib/weight.ts` |
-| **食物库（239 条，按每 100g/ml）** | `data/foods.zh.json` |
-| **份量换算规则（124 条）** | `data/foodPortions.json` |
+| **食物库（243 条，按每 100g/ml）** | `data/foods.zh.json` |
+| **份量换算规则（127 条）** | `data/foodPortions.json` |
+| **档位反推（这条记录当时按哪一档算的）** | `lib/nutrition/tiers.ts` |
+| **「这个数不对？」入口（每条记录旁边）** | `app/components/diet/EntryFeedback.tsx` |
+| **AI 归因 / 反馈文本拼装（一个数字都不产生）** | `lib/ai/feedback.ts` |
+| **份量档位 chips（共用）** | `app/components/diet/PortionChips.tsx` |
 | **数值引用台账（出处，不存数值）** | `data/foodSources.json` |
 | **取数工具（联网，不进闸门链；台账里的 code 靠它核对）** | `scripts/fetch-food-table.mjs` |
 | **成品菜配方（按配方估算的条目必须有它，且要能重算回去）** | `data/foodRecipes.json` |

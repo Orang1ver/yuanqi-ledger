@@ -13,13 +13,24 @@
  *    把 25/40/35 当成标准去判定对错，是一种没有根据的指责。
  * 3. 每条都带**折算依据**（多少克、按什么折算的）。这是可追溯性的最后一环：
  *    数字在下达的时候就该能被质疑，而不是等到发现结论不对再回头查。
+ *
+ * 2026-09-19 补的两件（都是第 3 条的延伸）：
+ * - **档位可改**：这条记录如果落在一个多档食物上（饺子有大中小），
+ *   当场把它按的是哪一档写出来，并给一排 chips 让你直接换。原来只能删了重记。
+ * - **「这个数不对？」**：每条旁边一个入口，把自己的疑问写一句 ——
+ *   有 Key 就让模型试着解释，解释不了才整理出一段能贴到 GitHub 的反馈文本。
+ *   ⚠️ 用户说的「不对」往往是**份量**不对，而不是数值错 —— 所以档位和这个入口放在一起。
  */
 
 import { emitDataChanged } from "@/lib/bus";
 import { groupByMealSlot } from "@/lib/nutrition/core";
+import { foodById } from "@/lib/nutrition/library";
 import { MEAL_SPLIT_NOTE, mealKcalTarget } from "@/lib/nutrition/targets";
+import { portionHitOf, tierOfEntry } from "@/lib/nutrition/tiers";
 import type { DietEntry, NutritionTargets } from "@/lib/nutrition/types";
-import { deleteDietEntry } from "@/lib/storage";
+import { deleteDietEntry, editDietEntry } from "@/lib/storage";
+import { EntryFeedback } from "./EntryFeedback";
+import { PortionChips } from "./PortionChips";
 
 export function DietDayList({
   entries,
@@ -78,33 +89,89 @@ export function DietDayList({
               // 整天都没记时上面已经说过一次了，这里不再四行重复
               entries.length > 0 ? <p className="yq-hint" style={{ marginTop: 5 }}>这一餐还没记</p> : null
             ) : (
-              g.entries.map((e) => (
-                <div className="yq-row" key={e.id}>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 14, color: "var(--yq-ink)" }}>
-                      {e.name}
-                      <span className="yq-hint" style={{ marginLeft: 6 }}>
-                        {e.amount} {e.unitLabel} · {Math.round(e.grams)}g
-                      </span>
-                    </div>
-                    <p className="yq-hint" style={{ marginTop: 1 }}>
-                      {e.time} · {Math.round(e.nutrition.kcal)} kcal · 蛋白{" "}
-                      {e.nutrition.protein.toFixed(1)}g · 脂肪 {e.nutrition.fat.toFixed(1)}g · 碳水{" "}
-                      {e.nutrition.carb.toFixed(1)}g
-                      {e.nutrition.sodium === undefined ? " · 钠 无数据" : ` · 钠 ${Math.round(e.nutrition.sodium)}mg`}
-                    </p>
-                  </div>
-                  <button
-                    className="yq-btn yq-btn-sm yq-btn-ghost"
-                    onClick={() => {
-                      deleteDietEntry(e.id);
-                      emitDataChanged();
-                    }}
+              g.entries.map((e) => {
+                const tier = tierOfEntry(e);
+                const hit = portionHitOf(e);
+                const food = e.foodId ? foodById(e.foodId) : undefined;
+                // 每条档位的克数 = 总克数 ÷ 数量。PortionChips 的 grams 是**每单位**的口径。
+                const perUnit = e.amount > 0 ? e.grams / e.amount : e.grams;
+
+                return (
+                  <div
+                    key={e.id}
+                    style={{ borderTop: "1px solid var(--yq-line)", paddingTop: 9, paddingBottom: 9 }}
                   >
-                    删
-                  </button>
-                </div>
-              ))
+                    <div className="yq-row" style={{ paddingTop: 0, paddingBottom: 0 }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 14, color: "var(--yq-ink)" }}>
+                          {e.name}
+                          <span className="yq-hint" style={{ marginLeft: 6 }}>
+                            {e.amount} {e.unitLabel} · {Math.round(e.grams)}g
+                          </span>
+                        </div>
+                        <p className="yq-hint" style={{ marginTop: 1 }}>
+                          {e.time} · {Math.round(e.nutrition.kcal)} kcal · 蛋白{" "}
+                          {e.nutrition.protein.toFixed(1)}g · 脂肪 {e.nutrition.fat.toFixed(1)}g · 碳水{" "}
+                          {e.nutrition.carb.toFixed(1)}g
+                          {e.nutrition.sodium === undefined ? " · 钠 无数据" : ` · 钠 ${Math.round(e.nutrition.sodium)}mg`}
+                        </p>
+                      </div>
+                      <button
+                        className="yq-btn yq-btn-sm yq-btn-ghost"
+                        onClick={() => {
+                          deleteDietEntry(e.id);
+                          emitDataChanged();
+                        }}
+                      >
+                        删
+                      </button>
+                    </div>
+
+                    {tier && (
+                      /* 只有在真有歧义（这个量词下不止一档）时才多画这一行 */
+                      <div style={{ marginTop: 7 }} data-yq="entry-tier">
+                        <p className="yq-hint" style={{ marginBottom: 4 }}>
+                          按「{tier.label}」算的 —— 这个量词下有 {tier.total} 档，点一下就能换
+                        </p>
+                        <PortionChips
+                          options={tier.options}
+                          currentGrams={perUnit}
+                          onPick={(o) => {
+                            // 只改克数，数量与量词不动；营养快照由 editDietEntry 重算
+                            editDietEntry(e.id, {
+                              grams: Math.round(o.grams * e.amount * 10) / 10,
+                            });
+                            emitDataChanged();
+                          }}
+                        />
+                      </div>
+                    )}
+
+                    <div style={{ marginTop: 7 }}>
+                      <EntryFeedback
+                        ctx={{
+                          foodName: e.name,
+                          portion: `${e.amount} ${e.unitLabel}`,
+                          grams: e.grams,
+                          kcal: e.nutrition.kcal,
+                          sodium: e.nutrition.sodium,
+                          ruleLabel: hit?.portion.label ?? e.unitLabel,
+                          ruleGrams: hit?.grams ?? perUnit,
+                          ruleNote: hit?.portion.note,
+                          source: food?.source ?? "（这条食物在库里已经查不到）",
+                          tier: tier
+                            ? {
+                                label: tier.label,
+                                total: tier.total,
+                                options: tier.options.map((o) => o.label),
+                              }
+                            : undefined,
+                        }}
+                      />
+                    </div>
+                  </div>
+                );
+              })
             )}
           </div>
         );
