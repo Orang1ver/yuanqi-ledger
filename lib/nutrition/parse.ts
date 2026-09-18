@@ -356,7 +356,55 @@ export type ParsedFragment = {
    * 用户说的是"大概"，屏幕上就不该出现一个看起来精确的 2。
    */
   approximate?: boolean;
+  /**
+   * 用户说的**份量档位**（「大饺子」→ 大）。
+   *
+   * 有它就去份量表里挑对应那一档：饺子小 15 / 中 20 / 大 30，差着一倍。
+   * 不认这个词的话用户会拿到**中号**的数，而界面上看不出任何异常 ——
+   * 单位、份量、说明都齐全，就是小了一号。
+   */
+  sizeHint?: string;
+  /**
+   * 剥掉尺寸词**之前**的食物名。
+   *
+   * ⚠️ 必须留着它，因为「该不该剥」取决于**库里有什么**，parse 这层不知道：
+   * 「大白菜」是库里的正名（剥成「白菜」就查不到了），而「大饺子」里的「大」是形容词。
+   * 所以上层要**先拿这个原名去查**，查不到才用剥过的 `name` + `sizeHint`。
+   */
+  nameRaw?: string;
 };
+
+/**
+ * 份量档位的说法。
+ *
+ * ⚠️ **长的必须排在前面**：「超大」要先于「大」被匹配到，
+ * 否则「超大饺子」会剥成「超」+「大饺子」，两个都不对。
+ */
+const SIZE_WORDS = ["超大", "加大", "大", "中", "小"];
+
+/**
+ * 从食物名开头剥出尺寸词，单独交给份量表去挑档。
+ *
+ * 剥掉它还有个**顺带的好处**：「大苹果」这种说法原来会整串拿去查库、必然查不到；
+ * 剥成「苹果」反而查得到。而份量表里没有「大」这一档时，`sizeHint` 会被忽略 ——
+ * 不会因为多剥了一个字就出错。
+ *
+ * ⚠️ 尺寸词后面**跟着量词**时要连着一起剥：「一大碗米饭」里的档位名是「大碗」
+ * （份量表里就叫这个），只剥一个「大」会剩下「碗米饭」去查库 —— 必然查不到。
+ * 顺带把那个量词交出去（「大碗米饭」原本连 `unit` 都没有，只能走兜底）。
+ */
+function splitSizeWord(name: string): { name: string; sizeHint?: string; unit?: string } {
+  for (const w of SIZE_WORDS) {
+    // 要求剥完还剩东西 —— 「大」单独出现时那是食物名的一部分，不该剥成空
+    if (name.length <= w.length || !name.startsWith(w)) continue;
+    const rest = name.slice(w.length);
+    const unit = PORTION_UNITS.find((u) => rest.length > u.length && rest.startsWith(u));
+    return unit
+      ? { name: rest.slice(unit.length), sizeHint: w + unit, unit }
+      : { name: rest, sizeHint: w };
+  }
+  return { name };
+}
 
 /**
  * 解析一个片段。
@@ -373,7 +421,7 @@ export type ParsedFragment = {
  *   「一包」               → { amount: 1, unit: "包", name: "" }（只有量词，没说是吃什么）
  *   「奶茶」               → { amount: 1, unit: undefined, name: "奶茶" }
  */
-export function parseFragment(raw: string): ParsedFragment {
+function parseFragmentInner(raw: string): ParsedFragment {
   return dozenToPieces(parseCore(raw));
 }
 
@@ -491,4 +539,27 @@ function parseCore(raw: string): ParsedFragment {
   }
 
   return { raw, cleaned, amount: 1, name: cleaned };
+}
+
+/**
+ * 解析一个片段。**对外只暴露这一个入口** —— 它在内部实现之上再剥一层尺寸词。
+ *
+ * 为什么要包一层，而不是在 `parseFragmentInner` 的 5 个 return 点上各剥一次：
+ * 内部有 5 条返回路径（组合式 / 克数后置 / 数量后置 / 纯克数 / 光杆量词），
+ * 漏掉任何一条，「大饺子」就会在**那一种写法**下悄悄算成中号 ——
+ * 而这种错在界面上完全看不出来（单位、份量、说明都齐全，就是小了一号）。
+ */
+export function parseFragment(raw: string): ParsedFragment {
+  const p = parseFragmentInner(raw);
+  const { name, sizeHint, unit } = splitSizeWord(p.name);
+  if (!sizeHint) return p;
+  return {
+    ...p,
+    // 原名留着 —— 「大白菜」这种正名要靠它才查得到（见 nameRaw 的注释）
+    nameRaw: p.name,
+    name,
+    sizeHint,
+    // 「大碗米饭」原本一个量词都没有（「大」不是量词），这里补上 —— 否则上层只能走兜底
+    unit: p.unit ?? unit,
+  };
 }

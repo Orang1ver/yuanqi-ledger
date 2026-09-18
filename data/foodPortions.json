@@ -140,6 +140,15 @@
     { "unit": "份", "match": ["北京烤鸭", "烤鸭", "片皮鸭"], "portions": [
       { "label": "一份", "grams": 150, "range": [80, 250], "isDefault": true, "note": "按带皮鸭肉算，一份约 150g" }
     ] },
+    { "unit": "份", "match": ["蛋炒饭", "炒饭"], "portions": [
+      { "label": "一份", "grams": 320, "range": [250, 450], "isDefault": true, "note": "一盘约 320g" }
+    ] },
+    { "unit": "碗", "match": ["蛋炒饭", "炒饭"], "portions": [
+      { "label": "一碗", "grams": 300, "range": [220, 420], "isDefault": true, "note": "家里盛饭的碗，比餐馆一盘略少" }
+    ] },
+    { "unit": "盘", "match": ["蛋炒饭", "炒饭"], "portions": [
+      { "label": "一盘", "grams": 320, "range": [250, 450], "isDefault": true, "note": "餐馆一盘的量" }
+    ] },
     { "unit": "份", "match": ["卤肉饭", "烤肉饭", "盖饭", "盖浇饭", "拌饭"], "portions": [
       { "label": "一份", "grams": 300, "range": [250, 400], "isDefault": true, "note": "含米饭，按一份 300g 成品算" }
     ] },
@@ -241,7 +250,9 @@
       { "label": "一个", "grams": 100, "range": [70, 150], "isDefault": true }
     ] },
     { "unit": "个", "match": ["饺子"], "portions": [
-      { "label": "一个", "grams": 20, "range": [15, 30], "isDefault": true }
+      { "label": "小", "grams": 15, "range": [12, 18] },
+      { "label": "中", "grams": 20, "range": [18, 26], "isDefault": true, "note": "中等大小的饺子约 20g" },
+      { "label": "大", "grams": 30, "range": [26, 40], "note": "大馅饺子能到 30g 甚至更多" }
     ] },
     { "unit": "个", "match": ["粽子"], "portions": [
       { "label": "一个", "grams": 150, "range": [100, 250], "isDefault": true }
@@ -321,7 +332,9 @@
       { "label": "一只", "grams": 55, "range": [45, 70], "isDefault": true }
     ] },
     { "unit": "只", "match": ["饺子"], "portions": [
-      { "label": "一只", "grams": 20, "range": [15, 30], "isDefault": true, "note": "与「个」同口径，饺子说「只」和说「个」是一回事" }
+      { "label": "小", "grams": 15, "range": [12, 18], "note": "与「个」同口径，饺子说「只」和说「个」是一回事" },
+      { "label": "中", "grams": 20, "range": [18, 26], "isDefault": true, "note": "与「个」同口径" },
+      { "label": "大", "grams": 30, "range": [26, 40], "note": "与「个」同口径" }
     ] },
     { "unit": "只", "match": ["鸡翅"], "portions": [
       { "label": "一只", "grams": 60, "range": [40, 90], "isDefault": true, "note": "按可食部分估，含骨时更重" }

@@ -183,28 +183,49 @@ function resolveOne(fragment: string, altLimit: number): QuickCandidate {
     return withApprox(c, parsed);
   }
 
-  const food = matchFood(parsed.name);
+  /*
+   * ⚠️ **先拿剥尺寸词之前的原名去查**。
+   * 库里有「大白菜」这种以「大」开头的正名 —— 直接拿剥过的「白菜」去查会落空
+   * （眼下侥幸被模糊匹配救回来了，但那是碰运气，不能依赖）。
+   * 原名查不到，才说明那个「大」多半是形容词：这时才用剥过的名字，并拿 `sizeHint` 去挑档。
+   */
+  const rawName = parsed.nameRaw ?? parsed.name;
+  /*
+   * ⚠️ 判据必须是**精确**匹配，不能用 `matchFood`。
+   * 「大饺子」也能被 `matchFood` **模糊**配到「饺子」—— 用它就会把这种情况误判成
+   * 「原名就查到了，那个大字是正名的一部分」，于是尺寸档**永远不生效**。
+   * 而「大白菜」是**精确**命中的正名。这两种必须分开，所以这里用 `findFoodByName`。
+   */
+  const exactRaw = findFoodByName(rawName);
+  /*
+   * 没有 nameRaw（没剥尺寸词）时 rawName === parsed.name，这一行就退化成原来的 matchFood；
+   * 有了 nameRaw 才是「先精确查原名，查不到再拿剥过的去模糊查」。
+   */
+  const food = exactRaw ?? matchFood(parsed.name);
+  /** 只有「剥了之后才查到」时，那个尺寸词才是形容词 */
+  const sizeHint = exactRaw ? undefined : parsed.sizeHint;
+
   if (!food) {
     // 泛称（「肉」「蔬菜」）走单独一条路：不硬配具体食物，只按分类摆候选
-    const generic = genericOf(parsed.name);
+    const generic = genericOf(rawName);
     c.missing = true;
     if (generic) {
       c.reason = "generic";
-      c.explain = `「${parsed.name}」太笼统了 —— 说明白是哪一样才记得准。下面按${generic.label}给你几个，或者自己搜一个。`;
+      c.explain = `「${rawName}」太笼统了 —— 说明白是哪一样才记得准。下面按${generic.label}给你几个，或者自己搜一个。`;
       c.alternatives = foodsByCategory(generic.category).slice(0, altLimit);
     } else {
-      c.reason = missingReason(parsed.name);
-      c.explain = missingExplain(parsed.name, c.reason);
+      c.reason = missingReason(rawName);
+      c.explain = missingExplain(rawName, c.reason);
       // 仍然给几个相近的让用户挑，别让他从零搜。
       // 整餐的说法也给：说「吃了顿饭」的人多半要的是主食，摆个「米饭」出来比让他自己搜强。
-      c.alternatives = searchFoods(parsed.name, altLimit);
+      c.alternatives = searchFoods(rawName, altLimit);
     }
     return withApprox(c, parsed);
   }
 
   c.food = food;
   c.name = food.name;
-  c.alternatives = dedupe([food, ...searchFoods(parsed.name, altLimit)]);
+  c.alternatives = dedupe([food, ...searchFoods(rawName, altLimit)]);
 
   // 用户既说了份量又说了克数（「一包 70g 的薯片」）—— 两个信息都用上：
   // 数量进 `amount`（记录里显示「1 包」，跟他说的一致），克数由 perUnitGrams 定。
@@ -223,7 +244,9 @@ function resolveOne(fragment: string, altLimit: number): QuickCandidate {
   }
 
   if (parsed.unit) {
-    const hit = resolvePortion(portionTable(), food, parsed.unit);
+    // sizeHint 是用户说的档位（「大饺子」→ 大）。份量表里没有这一档时它会被忽略，
+    // 退回默认档 —— 不会因为多说了一个形容词就查不到。
+    const hit = resolvePortion(portionTable(), food, parsed.unit, sizeHint);
     if (hit) {
       c.grams = hit.grams * parsed.amount;
       c.rule = hit.rule;

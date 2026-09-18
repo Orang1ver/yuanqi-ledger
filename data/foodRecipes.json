@@ -136,6 +136,79 @@
         { "foodId": "xiaobaicai", "grams": 30 },
         { "foodId": "zhiwuyou", "grams": 3 }
       ]
+    },
+    {
+      "foodId": "hongshaorou-shou",
+      "yieldG": 126,
+      "note": "瘦：五花肉 40g + 里脊 60g（靠里脊把肥肉比例压下来）",
+      "parts": [
+        { "foodId": "wuhua-rou", "grams": 40 },
+        { "foodId": "zhuliji", "grams": 60 },
+        { "foodId": "jiangyou", "grams": 10 },
+        { "foodId": "baitang", "grams": 10 },
+        { "foodId": "zhiwuyou", "grams": 5 },
+        { "foodId": "yan", "grams": 1 }
+      ]
+    },
+    {
+      "foodId": "hongshaorou",
+      "yieldG": 126,
+      "note": "正常：纯五花肉，肥瘦相间",
+      "parts": [
+        { "foodId": "wuhua-rou", "grams": 100 },
+        { "foodId": "jiangyou", "grams": 10 },
+        { "foodId": "baitang", "grams": 10 },
+        { "foodId": "zhiwuyou", "grams": 5 },
+        { "foodId": "yan", "grams": 1 }
+      ]
+    },
+    {
+      "foodId": "hongshaorou-fei",
+      "yieldG": 136,
+      "note": "肥：五花肉 + 额外 15g 油（收汁时那股油光）",
+      "parts": [
+        { "foodId": "wuhua-rou", "grams": 100 },
+        { "foodId": "zhiwuyou", "grams": 15 },
+        { "foodId": "jiangyou", "grams": 10 },
+        { "foodId": "baitang", "grams": 10 },
+        { "foodId": "yan", "grams": 1 }
+      ]
+    },
+    {
+      "foodId": "fried-rice-shaoyou",
+      "yieldG": 311.5,
+      "note": "少油：一盘只放 5g 油",
+      "parts": [
+        { "foodId": "rice-cooked", "grams": 250 },
+        { "foodId": "jidan-zhu", "grams": 50 },
+        { "foodId": "zhiwuyou", "grams": 5 },
+        { "foodId": "jiangyou", "grams": 5 },
+        { "foodId": "yan", "grams": 1.5 }
+      ]
+    },
+    {
+      "foodId": "fried-rice",
+      "yieldG": 316.5,
+      "note": "正常：10g 油。⚠️ 按**家常放盐**算；外卖通常更咸，钠会比这个高",
+      "parts": [
+        { "foodId": "rice-cooked", "grams": 250 },
+        { "foodId": "jidan-zhu", "grams": 50 },
+        { "foodId": "zhiwuyou", "grams": 10 },
+        { "foodId": "jiangyou", "grams": 5 },
+        { "foodId": "yan", "grams": 1.5 }
+      ]
+    },
+    {
+      "foodId": "fried-rice-duoyou",
+      "yieldG": 326.5,
+      "note": "多油：20g 油，饭粒能炒到发亮那种",
+      "parts": [
+        { "foodId": "rice-cooked", "grams": 250 },
+        { "foodId": "jidan-zhu", "grams": 50 },
+        { "foodId": "zhiwuyou", "grams": 20 },
+        { "foodId": "jiangyou", "grams": 5 },
+        { "foodId": "yan", "grams": 1.5 }
+      ]
     }
   ]
 }

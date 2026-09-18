@@ -355,6 +355,42 @@ describe("浅解析", () => {
     assert.equal(p.amount, 1);
   });
 
+  it("⚠ 说「大饺子」要按大号算 —— 尺寸词得从食物名里剥出来单独给份量表", () => {
+    // 不认这个词的话，用户会拿到**中号**的数（20g），而界面上看不出任何异常：
+    // 单位、份量、说明都齐全，就是小了一号。饺子三档差着一倍（15 / 20 / 30）。
+    const p = parseFragment("两个大饺子");
+    assert.equal(p.amount, 2);
+    assert.equal(p.unit, "个");
+    assert.equal(p.name, "饺子");
+    assert.equal(p.sizeHint, "大");
+  });
+
+  it("「大碗米饭」的档位名是「大碗」—— 尺寸词后面的量词要连着剥", () => {
+    // 只剥一个「大」会剩下「碗米饭」去查库，必然查不到；
+    // 而且「大碗米饭」原本连量词都没有（「大」不是量词），只能走兜底。
+    const p = parseFragment("一大碗米饭");
+    assert.equal(p.name, "米饭");
+    assert.equal(p.unit, "碗");
+    assert.equal(p.sizeHint, "大碗");
+  });
+
+  it("⚠ 「大白菜」是库里的正名，不能被当成「大 + 白菜」", () => {
+    // 剥是剥了（因为 parse 这层不知道库里有什么），但**原名必须留着** ——
+    // 上层要拿 nameRaw 先做精确匹配，命中就说明那个「大」是正名的一部分。
+    // 少了 nameRaw，「一份大白菜」会变成「库里没有『白菜』」。
+    const p = parseFragment("大白菜");
+    assert.equal(p.nameRaw, "大白菜");
+    assert.equal(p.name, "白菜");
+    assert.equal(p.sizeHint, "大");
+  });
+
+  it("没有尺寸词时一个字段都不多给", () => {
+    const p = parseFragment("一碗米饭");
+    assert.equal(p.sizeHint, undefined);
+    assert.equal(p.nameRaw, undefined);
+    assert.equal(p.name, "米饭");
+  });
+
   it("噪音只剥开头，不动食物名", () => {
     assert.equal(stripLeadNoise("我喝了一杯奶茶"), "一杯奶茶");
     assert.equal(stripLeadNoise("一杯奶茶"), "一杯奶茶");

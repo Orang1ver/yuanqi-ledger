@@ -114,10 +114,27 @@ function variantHint(n: string): string | null {
  * 而用户写的往往是「三分糖」「少糖」这类说法 —— 不映射的话，
  * 「珍珠奶茶（三分糖）」会命中全糖那档，热量直接高估三成以上。
  */
-const SUGAR_SYNONYMS: { variants: string[]; prefer: string }[] = [
+/**
+ * 「同名多档」的挑选规则：用户说法里出现某个词，就挑对应的那一档。
+ *
+ * 原来这张表叫 `SUGAR_SYNONYMS`，只认糖度（奶茶的全糖 / 半糖 / 无糖）。
+ * 现在库里有了别的多档食物 —— 红烧肉分肥瘦、蛋炒饭分油多油少 —— 所以泛化成通用的。
+ *
+ * ⚠️ 只在**同一主名的兄弟**之间挑（见 `preferVariant` 的实现）——
+ * 所以「少油」绝不会把一杯奶茶挑成「蛋炒饭（少油）」，
+ * 「肥」也不会让「肥牛」跑去命中红烧肉那一组。
+ */
+const VARIANT_SYNONYMS: { variants: string[]; prefer: string }[] = [
+  // 糖度（奶茶）
   { variants: ["无糖", "零糖", "去糖", "0糖"], prefer: "无糖" },
   { variants: ["半糖", "三分糖", "五分糖", "微糖", "少糖"], prefer: "半糖" },
   { variants: ["全糖", "正常糖", "标准糖", "七分糖"], prefer: "全糖" },
+  // 肥瘦（红烧肉）
+  { variants: ["瘦", "不肥", "精瘦"], prefer: "瘦" },
+  { variants: ["肥", "偏肥", "很肥", "带肥"], prefer: "肥" },
+  // 用油（蛋炒饭）
+  { variants: ["少油", "不油", "清淡"], prefer: "少油" },
+  { variants: ["多油", "重油", "油大"], prefer: "多油" },
 ];
 
 /**
@@ -128,7 +145,7 @@ function preferVariant(food: FoodItem, dishName: string): FoodItem {
   const base = stripParens(food.name);
   const siblings = allFoods().filter((f) => f.id !== food.id && stripParens(f.name) === base);
   if (!siblings.length) return food;
-  for (const syn of SUGAR_SYNONYMS) {
+  for (const syn of VARIANT_SYNONYMS) {
     if (!syn.variants.some((v) => dishName.includes(v))) continue;
     const target = siblings.find((f) => (variantHint(f.name) ?? "").includes(syn.prefer));
     if (target) return target;
