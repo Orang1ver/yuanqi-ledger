@@ -15,11 +15,18 @@
  *   node scripts/deploy.mjs                 # 正常发布
  *   node scripts/deploy.mjs --dry           # 只构建 + 注入，不推不 tag
  *   BASE_PATH=/foo node scripts/deploy.mjs  # 覆盖子路径（默认 /yuanqi-ledger）
+ *
+ * 有些机器上 git 连不上 github.com（DNS 被挡、必须靠 hosts 重定向、或只能按 IP 直连），
+ * 这时不用改脚本也不用改仓库配置，把环境差异用两个变量带进来即可：
+ *   DEPLOY_REMOTE_URL   远端 URL（可含凭据），给定时不再去查 remote 配置
+ *   DEPLOY_GIT_CONFIG   空格分隔的 -c key=value 列表，会追加到每条 git 命令前
+ * 例：DEPLOY_GIT_CONFIG="-c http.curloptResolve=github.com:443:140.82.112.3"
  */
 
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -29,11 +36,24 @@ const BASE_PATH = process.env.BASE_PATH || "/yuanqi-ledger";
 const REMOTE = process.env.DEPLOY_REMOTE || "origin";
 const BRANCH = "gh-pages";
 
+// 环境差异走这里进来，不写进仓库配置：见文件头的用法说明。
+const GIT_EXTRA = (process.env.DEPLOY_GIT_CONFIG || "").trim().split(/\s+/).filter(Boolean);
+
 const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
 const version = pkg.version;
 
 function run(cmd, args, opts = {}) {
   return execFileSync(cmd, args, { cwd: ROOT, stdio: "inherit", shell: process.platform === "win32", ...opts });
+}
+
+/** 取命令输出（run 是 stdio:inherit，抓不到文本，需要单独一个）。 */
+function capture(cmd, args, opts = {}) {
+  return execFileSync(cmd, args, { cwd: ROOT, encoding: "utf8", ...opts }).trim();
+}
+
+/** git 命令一律带上 GIT_EXTRA。 */
+function git(args, opts = {}) {
+  return run("git", [...GIT_EXTRA, ...args], opts);
 }
 
 // ---------- 1. 校验版本三处同步 ----------
@@ -94,16 +114,31 @@ if (DRY) {
 /*
  * out/ 每次构建都会被清空（连同里面的 .git），所以这里每次都要重新 init ——
  * 不能指望"上次已经建好仓库了"。gh-pages 分支只承载构建产物，与源码历史无关。
+ *
+ * 也因为是从零 init，out/ 里没有任何 remote，不能直接 `git push origin`：
+ * 远端 URL 从源码仓库的 remote 配置里取，或用 DEPLOY_REMOTE_URL 直接给。
  */
 console.log("\n▶ 发布到 gh-pages");
-run("git", ["init", "-b", BRANCH], { cwd: OUT });
-run("git", ["add", "-A"], { cwd: OUT });
-run("git", ["-c", "user.name=deploy", "-c", "user.email=deploy@local", "commit", "-m", `build: v${version} (${buildId})`], {
-  cwd: OUT,
-});
-run("git", ["push", "--force", REMOTE, `${BRANCH}:${BRANCH}`], { cwd: OUT });
-run("git", ["tag", "-f", `v${version}`], { cwd: ROOT });
-run("git", ["push", "--force", REMOTE, `v${version}`], { cwd: ROOT });
+const remoteUrl = process.env.DEPLOY_REMOTE_URL || capture("git", ["remote", "get-url", REMOTE]);
+if (!remoteUrl) {
+  console.error(`✗ 取不到远端 URL（remote "${REMOTE}" 没配）。用 DEPLOY_REMOTE_URL 直接给一个。`);
+  process.exit(1);
+}
+
+/*
+ * 提交信息写进临时文件再 `-F` 传入，不走 `-m` 参数：
+ * shell:true 下 Windows 会把 `build: v1.0.0 (20260918.0054)` 里的括号当命令分隔符，
+ * 结果是 `error: pathspec 'v1.0.0' did not match any file(s)`，而且报得很晚才发现。
+ */
+const msgFile = join(tmpdir(), `yuanqi-deploy-${buildId}.txt`);
+writeFileSync(msgFile, `build: v${version} (${buildId})\n`);
+
+git(["init", "-b", BRANCH], { cwd: OUT });
+git(["add", "-A"], { cwd: OUT });
+git(["-c", "user.name=deploy", "-c", "user.email=deploy@local", "commit", "-F", msgFile], { cwd: OUT });
+git(["push", "--force", remoteUrl, `${BRANCH}:${BRANCH}`], { cwd: OUT });
+git(["tag", "-f", `v${version}`], { cwd: ROOT });
+git(["push", "--force", remoteUrl, `v${version}`], { cwd: ROOT });
 
 console.log(`
 ✓ 发布完成 v${version}
