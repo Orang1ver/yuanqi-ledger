@@ -14,6 +14,7 @@ import {
   looksLikeLegacyBackup,
   type ImportMode,
 } from "@/lib/storage/backup";
+import { describeBackupStatus, shouldRemindBackup } from "@/lib/storage/backupReminder";
 
 /**
  * 设置面板。
@@ -40,6 +41,18 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
 
   const [includeKey, setIncludeKey] = useState(false);
   const [msg, setMsg] = useState("");
+  /*
+   * 备份状态行。这个弹窗是「点了设置才动态 import + 条件渲染」的（见 SettingsButton），
+   * 永远不会在 SSR 时渲染，所以惰性初始化里读 localStorage 是安全的 ——
+   * 与上面几行 loadPrefs() 同一个理由。
+   */
+  const [backupStatus, setBackupStatus] = useState(() => ({
+    text: describeBackupStatus(),
+    remind: shouldRemindBackup(),
+  }));
+  /** 导出 / 导入之后重读一次，否则状态行会停在旧值上，看起来像按钮没生效 */
+  const refreshBackupStatus = () =>
+    setBackupStatus({ text: describeBackupStatus(), remind: shouldRemindBackup() });
   const [confirmClear, setConfirmClear] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -83,6 +96,8 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
             (r.skipped ? `，跳过 ${r.skipped} 项（本地已有，合并模式不覆盖）` : ""),
         );
         if (mode === "overwrite") setTimeout(() => window.location.reload(), 900);
+        // 覆盖导入会把备份里的「上次备份时间」一起带进来，状态行要跟着变
+        refreshBackupStatus();
       } catch (err) {
         setMsg(err instanceof Error ? err.message : "导入失败");
       }
@@ -203,6 +218,10 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
             你的全部记录都存在这台设备的浏览器里。清缓存、换手机、换网址都会带走它 ——
             建议每换一次设备就导出一份留着。
           </p>
+          <p className="yq-hint" style={{ marginBottom: 10 }}>
+            <b>{backupStatus.text}</b>
+            {backupStatus.remind && " —— 该导一份了"}
+          </p>
           <label className="yq-chip" data-on={includeKey} style={{ marginBottom: 10 }}>
             <input
               type="checkbox"
@@ -213,7 +232,13 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
             备份里包含 AI Key
           </label>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-            <button className="yq-btn yq-btn-sm yq-btn-primary" onClick={() => downloadBackup(includeKey)}>
+            <button
+              className="yq-btn yq-btn-sm yq-btn-primary"
+              onClick={() => {
+                downloadBackup(includeKey);
+                refreshBackupStatus();
+              }}
+            >
               导出备份
             </button>
             <button className="yq-btn yq-btn-sm" onClick={() => fileRef.current?.click()}>

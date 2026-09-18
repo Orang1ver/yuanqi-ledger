@@ -17,6 +17,15 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.7.2",
+    date: "2026-09-18",
+    highlights: [
+      "超过 30 天没备份时，顶部会提醒你导出一份 —— 数据只在这台设备上，清缓存就全没了",
+      "设置页的备份区会显示「上次备份：N 天前」，不用再猜上次是什么时候",
+      "还没记过东西时不提醒；点「稍后」是安静 7 天，不是永久关掉",
+    ],
+  },
+  {
     version: "0.7.1",
     date: "2026-09-18",
     highlights: [

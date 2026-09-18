@@ -729,6 +729,148 @@ async function checkWellness(page, baseUrl, failures) {
  * 只断言"屏幕上出现了菜名"的话，本地推荐那一路也可能恰好推出同一道菜，
  * 检查会在接口根本没被调用的情况下全绿。
  */
+
+// ---------- 久未备份提醒 ----------
+
+/**
+ * 「久未备份」横幅。
+ *
+ * 数据只在这台设备的 localStorage 里，清一次缓存就真没了 ——
+ * 导出能力早就写在设置页，但**用户不会主动去点一个他没理由点的按钮**。
+ *
+ * 这条检查钉的是「该出现的出现，不该出现的别出现」：
+ *  - 刚打开（样例数据刚导入）时**不许**出现；
+ *  - 自己把「第一次打开」推到 60 天前之后**必须**出现，并带上天数；
+ *  - 点「稍后」后消失，且静默期真的写进了 localStorage；
+ *  - 点「导出备份」后消失，且「上次备份时间」真的落了库。
+ *
+ * ⚠️ 前置状态**自己造**（地雷 18）：样例数据刚导入时 `firstSeenAt` 就是"今天"，
+ * 拿它当"超期"的对照，前半段会绿，后半段永远测不到。
+ *
+ * ⚠️ 定位用 `[data-yq="backup-reminder"]`，**不靠按钮文案**：
+ * 设置页里也有一个「导出备份」按钮，靠文本子串定位迟早被别处的文案救活（地雷 24）。
+ */
+async function checkBackupReminder(page, baseUrl, failures) {
+  const KEY = "recipe.backupReminder.v1";
+
+  // ① 刚打开：什么都没超期，横幅不许出现
+  await goto(page, `${baseUrl}/?backup0=${Date.now()}`);
+  const fresh = await evaluate(
+    page,
+    `(() => ({
+      shown: !!document.querySelector('[data-yq="backup-reminder"]'),
+      stored: localStorage.getItem("${KEY}") !== null,
+    }))()`,
+  );
+
+  // ② 造前置：把「第一次打开」推到 60 天前
+  const aged = await evaluate(
+    page,
+    `(() => {
+      const raw = localStorage.getItem("${KEY}");
+      if (!raw) return false;
+      const o = JSON.parse(raw);
+      o.firstSeenAt = new Date(Date.now() - 60 * 86400000).toISOString();
+      o.lastBackupAt = null;
+      o.snoozedUntil = null;
+      localStorage.setItem("${KEY}", JSON.stringify(o));
+      return true;
+    })()`,
+  );
+
+  if (!aged) {
+    failures.push(`久未备份提醒：第一次打开时没有写下 ${KEY} —— 状态没初始化，这条检查没跑成`);
+    console.log("✗ 久未备份提醒：状态键没被初始化，检查没跑成");
+    return;
+  }
+
+  // ③ 超期了：横幅必须出现，并带上真实天数
+  await goto(page, `${baseUrl}/?backup1=${Date.now()}`);
+  const overdue = await evaluate(
+    page,
+    `(() => {
+      const el = document.querySelector('[data-yq="backup-reminder"]');
+      if (!el) return { shown: false };
+      const m = el.innerText.match(/已经\\s*(\\d+)\\s*天/);
+      return { shown: true, days: m ? Number(m[1]) : null, hasLater: !!el.innerText.includes("稍后") };
+    })()`,
+  );
+
+  // ④ 点「稍后」：横幅消失，静默期写进库
+  const snoozed = await evaluate(
+    page,
+    `(async () => {
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+      const el = document.querySelector('[data-yq="backup-reminder"]');
+      if (!el) return { clicked: false };
+      const later = [...el.querySelectorAll("button")].find((b) => b.innerText.includes("稍后"));
+      if (!later) return { clicked: false };
+      later.click();
+      await sleep(350);
+      const o = JSON.parse(localStorage.getItem("${KEY}") || "{}");
+      return {
+        clicked: true,
+        gone: !document.querySelector('[data-yq="backup-reminder"]'),
+        snoozeAt: o.snoozedUntil ?? null,
+      };
+    })()`,
+  );
+
+  // ⑤ 解除静默让它回来，再点「导出备份」
+  await evaluate(
+    page,
+    `(() => {
+      const o = JSON.parse(localStorage.getItem("${KEY}") || "{}");
+      o.snoozedUntil = null;
+      localStorage.setItem("${KEY}", JSON.stringify(o));
+      return true;
+    })()`,
+  );
+  await goto(page, `${baseUrl}/?backup2=${Date.now()}`);
+  const exported = await evaluate(
+    page,
+    `(async () => {
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+      const el = document.querySelector('[data-yq="backup-reminder"]');
+      if (!el) return { clicked: false };
+      const btn = [...el.querySelectorAll("button")].find((b) => b.innerText.includes("导出备份"));
+      if (!btn) return { clicked: false };
+      btn.click();
+      await sleep(350);
+      const o = JSON.parse(localStorage.getItem("${KEY}") || "{}");
+      return {
+        clicked: true,
+        gone: !document.querySelector('[data-yq="backup-reminder"]'),
+        lastBackupAt: o.lastBackupAt ?? null,
+      };
+    })()`,
+  );
+
+  const problems = [];
+  if (!fresh.stored) problems.push("第一次打开时没有写下备份提醒的状态键");
+  if (fresh.shown) problems.push("刚打开就在提醒备份 —— 提醒太早，用户会学会无视它");
+  if (!overdue.shown) problems.push("「第一次打开」在 60 天前，横幅却没出现");
+  else if (overdue.days === null || overdue.days < 30) {
+    problems.push(`横幅出现了，天数却读不出来或不合理（读到 ${overdue.days}）`);
+  }
+  if (overdue.shown && !overdue.hasLater) problems.push("超期横幅上没有「稍后」按钮");
+  else if (snoozed.clicked && !snoozed.gone) problems.push("点了「稍后」，横幅没消失");
+  else if (snoozed.clicked && !snoozed.snoozeAt) problems.push("点了「稍后」，静默期没写进 localStorage");
+  if (exported.clicked && !exported.gone) problems.push("点了「导出备份」，横幅没消失");
+  if (exported.clicked && !exported.lastBackupAt) {
+    problems.push("点了「导出备份」，「上次备份时间」没落库 —— 下次打开还会接着提醒");
+  }
+
+  const ok = problems.length === 0;
+  console.log(
+    `${ok ? "✓" : "✗"} 久未备份提醒：刚打开${fresh.shown ? "出现了（不该）" : "不打扰"}；` +
+      `推到 60 天前 → ${overdue.shown ? `出现，读到 ${overdue.days} 天` : "没出现"}；` +
+      `点「稍后」${snoozed.clicked ? (snoozed.gone ? "消失" : "没消失") : "按钮没找到"}；` +
+      `点「导出备份」${exported.clicked ? (exported.lastBackupAt ? "记下了备份时间" : "没记下时间") : "按钮没找到"}`,
+  );
+  failures.push(...problems.map((p) => `久未备份提醒：${p}`));
+}
+
 async function checkAiPick(page, baseUrl, failures) {
   const DISH_OK = "番茄蛋汤";
   const DISH_FAKE = "凭空捏造的菜";
@@ -1183,6 +1325,9 @@ try {
 
   // 这一条会把打卡记录里的睡眠/心情抹掉，所以必须在所有依赖它们的断言之后
   await checkWellness(page, BASE_URL, failures);
+
+  // 这一条会动备份提醒的状态、并真的触发一次下载，同样放在只读断言之后
+  await checkBackupReminder(page, BASE_URL, failures);
 
   // 这一条会**覆盖**菜单库与饮食记录（前置自己造），必须排在最后
   await checkAiPick(page, BASE_URL, failures);

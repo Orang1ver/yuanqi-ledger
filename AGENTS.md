@@ -373,6 +373,7 @@ curl -s "https://orang1ver.github.io/yuanqi-ledger/sw.js?cb=$(date +%s)" | grep 
 | 各版本改了什么 | `CHANGELOG.md`（权威）、`lib/changelog.ts`（App 内展示） |
 | **localStorage 键名契约** | `lib/storage/keys.ts` |
 | 数据读写 | `lib/storage/`（`io.ts` 原语、`health.ts`/`meals.ts`/`takeout.ts` 领域、`backup.ts` 备份） |
+| **久未备份提醒（阈值 / 静默期 / 何时该提醒）** | `lib/storage/backupReminder.ts` |
 | 健康计算（BMR/TDEE/目标） | `lib/health.ts` |
 | 喝水与步数换算 | `lib/steps.ts` |
 | 连续天数与徽章 | `lib/rewards.ts` |
@@ -381,7 +382,7 @@ curl -s "https://orang1ver.github.io/yuanqi-ledger/sw.js?cb=$(date +%s)" | grep 
 | **睡眠与心情的周聚合** | `lib/wellness.ts` |
 | 体重计算（周均、距健康区间） | `lib/weight.ts` |
 | **食物库（223 条，按每 100g/ml）** | `data/foods.zh.json` |
-| **份量换算规则（111 条）** | `data/foodPortions.json` |
+| **份量换算规则（113 条）** | `data/foodPortions.json` |
 | **数值引用台账（出处，不存数值）** | `data/foodSources.json` |
 | **引用台账闸门** | `scripts/check-food-reference.mjs` |
 | **营养纯函数核心** | `lib/nutrition/core.ts` |

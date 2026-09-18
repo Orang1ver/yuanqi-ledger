@@ -4,7 +4,7 @@
 > 每项带编号、目标、版本、改动文件、验收标准、依赖关系。
 > 红线与发布纪律见 `AGENTS.md`；AI 推荐外卖的细化方案见 `docs/HANDOFF-AI-RECOMMEND.md`。
 
-**当前版本：0.7.0** · 最后更新：2026-09-18
+**当前版本：0.7.2** · 最后更新：2026-09-18
 
 ---
 
@@ -271,15 +271,19 @@
 - **✅ 已完成**：
   - 份量表联动校验（每条食物至少被一条份量规则命中）—— 建它时一口气列出 19 条缺口。
   - `data/foodSources.json` + `npm run check:reference`（写了外部来源的条目必须有台账）。
+  - **0.7.1**：干重食物的份量口径（挂面 865→277 kcal、粉丝干 845→270、米粉干 865→277）
+    + 闸门 ④c「干重食物不许用熟重的克数」；`LEAD_NOISE` 补
+    「下了 / 煮了 / 做了 / 炒了 / 煎了 / 烤了」。
 - **📋 待核清单**：**`docs/REFERENCE-CHECKLIST.md`** ——
   有人问「15 个饺子怎么算出 1860mg 钠的」之后扫出来的一份台账。两个硬数字：
   **223 条里 184 条没有可复核出处**（176 条是模糊口径）；**95 条**命中了份量规则、
   但规则里没说明「这个克数指生重还是熟重」。
-- **⚠️ 清单里已经实测确认了一个真 bug**：`一碗挂面` 算出 **865 kcal**（真实约 280）——
-  「挂面」是**干重**数据，却命中了 `碗[面条] = 250g` 这条熟重规则，**高估 3 倍**。
-  同一批还撞见 `LEAD_NOISE` 缺「下了 / 煮了」，导致「下了一碗挂面」丢掉份量、退化成估算。
+- **✅ 清单里那条实测确认的真 bug 已在 0.7.1 修掉**：`一碗挂面` 曾算出 **865 kcal**
+  （真实约 280）——「挂面」是**干重**数据，却命中了 `碗[面条] = 250g` 这条熟重规则，
+  **高估 3 倍**；同一条路径上还躺着粉丝（干）与米粉（干）。
+  顺带补了 `LEAD_NOISE` 缺的「下了 / 煮了」，此前「下了一碗挂面」会丢掉份量、退化成估算。
 - **建议的拆法**（别一次做完 184 条）：
-  1. 先修挂面那个口径 bug + 补 `LEAD_NOISE`；
+  1. ~~先修挂面那个口径 bug + 补 `LEAD_NOISE`~~ → **0.7.1 已完成**；
   2. 给 `碗 / 份 / 盘` 里生熟有差异的条目补 `note`（约 40 条，纯文案不改数值）；
   3. 把「口径未写」做成闸门（命中 `碗/份/盘` 且 source 带做法字样的条目必须有 `note`，自证会失败）；
   4. 数值校准本身（饺子/馄饨/红烧肉…）并入 P6.1 第二批的配方估算。
@@ -297,7 +301,9 @@
 > - 性能复查需在食物库扩容（P6）后做。
 
 - **目标**：
-  1. **久未备份提醒**：新增持久化键（`recipe.*` 前缀）记录上次备份时间戳，超 N 天（如 30 天）在设置页/启动时提示。
+  1. ✅ **久未备份提醒**（**0.7.2 已完成**）：新键 `recipe.backupReminder.v1` 记
+     「第一次打开 / 上次导出 / 静默期」；超 30 天时顶部横幅 + 设置页状态行。
+     空库不提醒（菜单库种子不算），「稍后」是安静 7 天而不是永久关闭。
   2. **导入预览更友好**：`describeBackup`（:128）已能预览，可优化提示文案。
   3. **文案表统一**：抽 `lib/copy.ts`（或类似）集中界面文案。
   4. **更多冒烟检查**：每新增一类「只能靠交互/时间看出来的 bug」，补一条自证失败的检查。
@@ -321,12 +327,10 @@
 | **0.6.1** ✅ | 追加 13 条外卖快餐/小吃（真实菜单库驱动）+ 修「昨晚」丢份量 | PATCH |
 | **0.6.2** ✅ | **P5.3 完成**：份量档位接进「记一笔」（抽 `PortionChips` 共用 + 删死代码） | PATCH |
 | **0.7.0** ✅ | **P7 完成**：周报加「睡眠与心情」+ 体重周均与健康区间进度 | MINOR |
-| 0.7.x | **P8 剩余**：数值人工校核（需要用户参与，我给待核清单）；P6.1 第二/三批 | PATCH |
-| 0.6.x | **P6.1 第二/三批**（成品菜、回填 source）；P5.3 份量档位点选 | PATCH 或 MINOR |
-| 0.6.x | P6.2 条码（若数据源干净） | 视情况 |
-| 0.7.0 | P7 睡眠/心情/体重深化 | MINOR |
-| 0.7.x | P8 联动校验 + 校核回填 | PATCH |
-| 0.8.0 / 0.9.0 | P9 导出提醒/文案表/性能 | PATCH/MINOR |
+| **0.7.1** ✅ | 干重食物不再按熟重口径算（挂面 865→277 kcal）+ 闸门 ④c + 补「下了 / 煮了」 | PATCH |
+| **0.7.2** ✅ | **P9 第 1 项完成**：久未备份提醒（横幅 + 设置页状态行） | PATCH |
+| 0.7.3 | **P8 剩余**：给 `碗 / 份 / 盘` 补口径 `note`（约 40 条）+ 把「口径未写」做成闸门 | PATCH |
+| 0.8.0 / 0.9.0 | P9 剩余（导入预览 / 文案表 / 性能复查）；P6.1 第二/三批；P6.2 条码（若数据源干净） | PATCH/MINOR |
 | 1.0.0 | 及格线达成后发正式版 | — |
 
 **1.0.0 及格线**（不变）：P5、P6 全部完成；P8 关键数据人工校核达标；P9 导出体验落地；用户实际用顺无「一上手就撞到」的问题。
@@ -349,9 +353,9 @@
 
 ```bash
 BASE_PATH=/yuanqi-ledger npm run build   # 沙箱外
-npm test                  # 当前 180 条（含 mealPresets、AI 推荐、口语解析、睡眠心情、体重周均）
+npm test                  # 当前 205 条（含 mealPresets、AI 推荐、口语解析、睡眠心情、体重周均、备份提醒）
 npm run check:data        # 数据层兼容（15 项）
-npm run smoke             # 真实 Edge 渲染 + 6 个定向交互检查（餐次 / 一顿饭 / 份量档位 / 睡眠心情 / 帮我挑）
+npm run smoke             # 真实 Edge 渲染 + 7 个定向交互检查（餐次 / 一顿饭 / 份量档位 / 睡眠心情 / 备份提醒 / 帮我挑）
 npm run check:nutrition   # 食物库质检（算术自洽 + 每条食物有没有份量规则）
 npm run check:reference   # 引用台账（标了外部来源的条目必须登记在册）
 python scripts/verify-subpath.py --base /yuanqi-ledger
@@ -375,7 +379,7 @@ python scripts/verify-subpath.py --base /yuanqi-ledger
 | 本地推荐引擎（降级） | `lib/nutrition/recommend.ts`（`suggestForGaps`） |
 | 份量档位 UI（已存在，待接入） | `app/components/diet/PortionPicker.tsx`、`quickadd.ts`（`defaultPortionOptions`） |
 | 口语解析 | `lib/nutrition/parse.ts` |
-| 食物库 / 份量表 | `data/foods.zh.json`（223 条）、`data/foodPortions.json`（111 条） |
+| 食物库 / 份量表 | `data/foods.zh.json`（223 条）、`data/foodPortions.json`（113 条） |
 | **数值引用台账（出处，不存数值）** | `data/foodSources.json` |
 | 食物库质检 | `scripts/check-nutrition.mjs` |
 | **引用台账闸门** | `scripts/check-food-reference.mjs`（`npm run check:reference`） |
@@ -383,5 +387,6 @@ python scripts/verify-subpath.py --base /yuanqi-ledger
 | 体重计算 | `lib/weight.ts` |
 | 周报页 | `app/weekly/page.tsx` |
 | 备份/导出 | `lib/storage/backup.ts`、`app/components/shell/SettingsDialog.tsx` |
+| **久未备份提醒（阈值 / 静默期 / 何时该提醒）** | `lib/storage/backupReminder.ts`、`app/components/shell/BackupReminderBanner.tsx` |
 | 冒烟测试 | `scripts/browser-smoke.mjs` |
 | 项目规矩 | `AGENTS.md` |

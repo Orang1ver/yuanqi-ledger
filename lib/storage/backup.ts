@@ -9,10 +9,14 @@
  * 1) 导出靠 `recipe.` 前缀扫描 —— 新增键必须带这个前缀，否则导不出去。
  * 2) `describeBackup` 是**子串硬编码**映射，新增键要补一行，否则导入预览看不到它。
  *    也正因如此，键名不得与既有键产生子串重叠（见 keys.ts 的注释）。
+ *    ⚠️ 例外：**应用元数据**（`backupReminder` / `iosInstallHintDismissed` /
+ *    `updateBannerDismissed`）不用补 —— 它们不是"用户记录"，
+ *    在导入预览里列出来只会让那一行变长，帮不上任何判断。
  */
 
 import { APP_PREFIX, appKeys } from "./io";
 import { KEYS } from "./keys";
+import { markBackedUp } from "./backupReminder";
 
 export type Backup = {
   app: string;
@@ -62,6 +66,12 @@ export function downloadBackup(includeApiKey: boolean): void {
   a.download = `元气账本-备份-${stamp()}.json`;
   a.click();
   URL.revokeObjectURL(url);
+  /*
+   * 标记「刚备份过」放在**这里**而不是调用点：
+   * 只要有人导出了备份就该记上。挂到 UI 层的话，将来多一个导出入口就会漏记，
+   * 而漏记的后果是「明明备份过却一直被提醒」—— 用户会开始无视这个提醒。
+   */
+  markBackedUp();
 }
 
 export type ImportMode = "merge" | "overwrite";

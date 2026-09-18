@@ -47,6 +47,13 @@ export const KEYS = {
   updateBannerDismissed: "recipe.updateBannerDismissed.v1",
   /** 饮食日记（元气账本新增） */
   dietLog: "recipe.dietLog.v1",
+  /**
+   * 久未备份提醒的状态：第一次打开 / 上次导出备份 / 静默期。
+   * ⚠️ 这是**应用元数据**，不是用户记录 —— 所以刻意**不进** `describeBackup`
+   * 的导入预览（同 `iosInstallHintDismissed` / `updateBannerDismissed`）。
+   * 键名与既有键无子串重叠，不会被 `has(...)` 误判。
+   */
+  backupReminder: "recipe.backupReminder.v1",
 } as const;
 
 export type StorageKey = (typeof KEYS)[keyof typeof KEYS];
