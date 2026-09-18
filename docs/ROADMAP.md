@@ -4,35 +4,51 @@
 > 每项带编号、目标、版本、改动文件、验收标准、依赖关系。
 > 红线与发布纪律见 `AGENTS.md`；AI 推荐外卖的细化方案见 `docs/HANDOFF-AI-RECOMMEND.md`。
 
-**当前版本：0.4.0（已上线）** · 最后更新：2026-09-18
+**当前版本：0.5.0（P5.1 已完成，见第一节）** · 最后更新：2026-09-18
 
 ---
 
-## 零、立即清理（0.4.1，纯收尾，不新增功能）
+## 零、立即清理（已完成，**不单独发版本**）
 
 这些是上一轮 0.4.0 遗留的「文档与代码脱节」，先清掉再往下走，否则接手方会被误导。
 
 | # | 事项 | 说明 |
 |---|---|---|
-| C1 | ✅ 孤儿测试挂入 `npm test` | `lib/mealPresets.test.ts`（3 条用例）已存在但没挂进 `package.json` 的 test 脚本，从未被执行。**已修复**（test 126 → 129 全绿）。 |
-| C2 | 同步本文件版本与状态 | 0.3.0 → 0.4.0；P5.2「一顿饭一键记」标记完成；P5.1「AI 推荐外卖」改为未做（升 0.5.0）。 |
-| C3 | 修正 `docs/HANDOFF-AI-RECOMMEND.md` 版本号 | 文档里「当前 0.3.0」「做完升 0.4.0」已过期 → 改为「当前 0.4.0」「做完升 0.5.0」。 |
+| C1 | ✅ 孤儿测试挂入 `npm test` | `lib/mealPresets.test.ts`（3 条用例）已存在但没挂进 `package.json` 的 test 脚本，从未被执行。**已修复**并随 `b53746d` 提交。 |
+| C2 | ✅ 同步本文件版本与状态 | 0.3.0 → 0.4.0；P5.2「一顿饭一键记」标记完成；P5.1「AI 推荐外卖」改为未做（升 0.5.0）。 |
+| C3 | ✅ 修正 `docs/HANDOFF-AI-RECOMMEND.md` 版本号 | 文档里「当前 0.3.0」「做完升 0.4.0」已过期 → 已改为「当前 0.4.0」「做完升 0.5.0」。 |
 
-**C1 已改，需提交（PATCH 0.4.1）；C2/C3 随本文件一并提交。**
+> **决定：不发 0.4.1 这个 PATCH 版本。** 理由是本仓库自己的递增规则
+> （见 `CHANGELOG.md` 开头）：「只改文档 / 注释 / 构建脚本 → 不升版本」。
+> C1 动的是 test 脚本、C2/C3 只动文档，**用户看不到任何变化** ——
+> 为一个用户看不见的改动发一版，只会让 App 里的「更新了什么」多一条废话。
+> 三件事已全部落在 `main` 上，直接进 0.5.0。
 
 ---
 
-## 一、P5.1 AI 推荐外卖 → 0.5.0（MINOR）
+## 一、✅ P5.1 AI 推荐外卖 → **0.5.0（已上线）**
 
-> 完整方案见 `docs/HANDOFF-AI-RECOMMEND.md`（225 行，含现状/红线/分步/测试/发布）。此处只列要点与依赖。
+> 完整方案见 `docs/HANDOFF-AI-RECOMMEND.md`。**已按该方案实现**，落地情况与三处刻意的偏差见本节末尾。
 
 - **目标**：饮食页/菜单库加「帮我挑外卖」——点一下 → 一次 DeepSeek 调用 → 返回 2~3 个候选 + 各一句理由。
-- **红线（最高优先）**：LLM 只做消歧与措辞，**绝不吐营养数字**；数字唯一来源 `nutritionOf` / `estimateDish`。
-- **已就绪**：DeepSeek Key 存储位（`lib/prefs.ts` + 设置页 UI）、`openai@6.7.0` 依赖、本地降级 `suggestForGaps`、取数范例 `WhatToEatCard.tsx`、浏览器直连 DeepSeek 可行（更早版本已验证）。
-- **分步**：① `lib/ai/recommend.ts` 封装调用（JSON 模式、禁吐数字）② prompt 组装（缺口定性 + 菜单菜名 + 忌口）③ UI 入口 + 无 Key/失败降级 ④ 白名单过滤（模型返回菜名必须能落回本地估算）⑤ 测试 + 冒烟（自证会失败）。
-- **版本**：0.5.0（MINOR），三处同步。
-
-**依赖**：无（可直接开工）。**验收**：四道闸门全绿 + 冒烟「无 Key 隐藏/降级」「假 key 走通」自证会失败。
+- **红线（最高优先级）**：LLM 只做消歧与措辞，**绝不吐营养数字**；数字唯一来源 `nutritionOf` / `estimateDish`。
+- **落地**：
+  - `lib/ai/deepseek.ts` —— 浏览器直连的调用封装（超时、状态码翻译成能照做的话）。Key 由调用方传入，这一层不碰 localStorage，所以能在 Node 里被单测。
+  - `lib/ai/recommend.ts` —— `pickableDishes`（候选池）/ `gapHints` / `buildPickMessages` / `sanitizeReason` / `parsePicks` / `pickDishesForGaps`。
+  - `lib/ai/recommend.test.ts` —— 15 条用例，重点全在「让模型越权」：编菜单外的菜、理由里塞热量、多带一个 `kcal` 字段。
+  - `app/components/today/WhatToEatCard.tsx` —— 「✨ 帮我挑」按钮 + `idle → loading → done | error` 状态机；失败/挑不出来**自动退回本地推荐**。
+  - `scripts/browser-smoke.mjs` —— 新增 `checkAiPick`：无 Key 隐藏 / 有 Key 走通 / 模型编的菜不上屏 / 模型嘴里的数字不上屏（**四条都自证过会失败**）。
+- **三处与计划的偏差**（都是刻意的，理由如下）：
+  1. **入口放在首页的「今天还该吃点啥」卡上，不是饮食页/菜单库。**
+     那张卡本来就是"下一口吃什么"的唯一出口，且已经握有今日缺口 + 菜单库 + 忌口三样数据；
+     换到别的页面等于把同一件事拆成两处，用户要在两个页面之间找"到底哪个在推荐"。
+  2. **用 `fetch` 而不是 `openai` SDK。** 依赖里那个 `openai` 是 9.6MB（1.29MB JS），
+     而这里真正需要的只是"一次 POST，读一个 JSON 字段"。为一次调用背上一整个 SDK 不划算。
+     （`openai` 目前仍是未使用的依赖，**没有删**——删依赖不在本次范围内，留待后续决定。）
+  3. **模型回答用序号而不是菜名。** 序号必须落在候选范围内，白名单过滤就退化成一次下标越界检查，
+     没有"名字长得像"的模糊空间；菜名那一路只作为"模型不听话"时的兜底（要求精确匹配）。
+- **版本**：0.5.0（MINOR），三处已同步。
+- **验收**：四道闸门全绿 + 冒烟四条新检查逐条自证会失败（见第 4 节第 23 条地雷）。
 
 ---
 
@@ -169,8 +185,8 @@
 
 | 版本 | 内容 | 类型 |
 |---|---|---|
-| 0.4.1 | C1 孤儿测试挂入（已改）+ C2/C3 文档同步 | PATCH |
-| 0.5.0 | P5.1 AI 推荐外卖 | MINOR |
+| ~~0.4.1~~ | C1 孤儿测试挂入 + C2/C3 文档同步（已落在 `main`，**不单独发版本**，理由见第零节） | — |
+| **0.5.0** ✅ | P5.1 AI 推荐外卖（**已完成**） | MINOR |
 | 0.5.x / 0.6.0 | P5.3 份量档位 + P5.4 口语解析 | PATCH |
 | 0.6.0 | P6.1 食物库扩容 + 数值校准（含 P8 参照校核脚本） | MINOR |
 | 0.6.x | P6.2 条码（若数据源干净） | 视情况 |
@@ -199,9 +215,9 @@
 
 ```bash
 BASE_PATH=/yuanqi-ledger npm run build   # 沙箱外
-npm test                  # 当前 129 条（已含 mealPresets）
+npm test                  # 当前 144 条（含 mealPresets 与 AI 推荐）
 npm run check:data        # 数据层兼容（15 项）
-npm run smoke             # 真实 Edge 渲染 + 3 个定向交互检查
+npm run smoke             # 真实 Edge 渲染 + 4 个定向交互检查（含「帮我挑」）
 npm run check:nutrition   # 食物库质检
 npm run check:reference   # （P6/P8 新增）数值参照校核
 python scripts/verify-subpath.py --base /yuanqi-ledger
@@ -217,7 +233,10 @@ python scripts/verify-subpath.py --base /yuanqi-ledger
 
 | 事项 | 文件 |
 |---|---|
-| AI 推荐外卖方案 | `docs/HANDOFF-AI-RECOMMEND.md` |
+| AI 推荐外卖方案（已实现） | `docs/HANDOFF-AI-RECOMMEND.md` |
+| **DeepSeek 调用封装（浏览器直连）** | `lib/ai/deepseek.ts` |
+| **「帮我挑」prompt 组装 / 白名单 / 去数字** | `lib/ai/recommend.ts` |
+| **「帮我挑」入口（首页推荐卡）** | `app/components/today/WhatToEatCard.tsx` |
 | DeepSeek Key 读写 | `lib/prefs.ts` |
 | 本地推荐引擎（降级） | `lib/nutrition/recommend.ts`（`suggestForGaps`） |
 | 份量档位 UI（已存在，待接入） | `app/components/diet/PortionPicker.tsx`、`quickadd.ts`（`defaultPortionOptions`） |
