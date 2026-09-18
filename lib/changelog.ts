@@ -17,6 +17,14 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.5.1",
+    date: "2026-09-18",
+    highlights: [
+      "修：「15 个饺子」不再被记成一条叫「5」的假食物 + 1 个饺子（数字与量词之间打了空格就会这样）",
+      "修：「十五个饺子」不再被算成 10 份（2000g）—— 中文数量词现在认到两位数",
+    ],
+  },
+  {
     version: "0.5.0",
     date: "2026-09-18",
     highlights: [

@@ -386,9 +386,70 @@ describe("浅解析", () => {
     assert.deepEqual(splitFragments("一包 70g 的薯片"), ["一包70g的薯片"]);
     assert.deepEqual(splitFragments("500ml 奶茶"), ["500ml奶茶"]);
   });
+
+  it("数字与**量词**之间的空白也要粘住：「15 个饺子」", () => {
+    // 回归（2026-09-18 用户实测上报）：粘合规则原来只认**度量单位**（克/g/ml），不认**量词**，
+    // 于是「15 个饺子」被空白切成 ["15", "个饺子"] ——
+    // 界面上第一条是「「5」· 库里没有」，第二条只剩「1 个饺子」。
+    // 用户说了 15 个，账本上记成 20g（差 15 倍），而那条假食物比真错误更显眼。
+    assert.deepEqual(splitFragments("15 个饺子"), ["15个饺子"]);
+    const p = parseFragment("15 个饺子");
+    assert.equal(p.amount, 15);
+    assert.equal(p.unit, "个");
+    assert.equal(p.name, "饺子");
+
+    // 但**不能**因此把「两样东西之间的空白」也粘掉
+    assert.deepEqual(splitFragments("一包薯片 一杯奶茶"), ["一包薯片", "一杯奶茶"]);
+    assert.deepEqual(splitFragments("两个鸡蛋、一碗米饭"), ["两个鸡蛋", "一碗米饭"]);
+  });
+
+  it("中文数量词要认到两位数：「十五个饺子」不是「十个饺子」", () => {
+    // 回归：数量词原来是个**单字字符类**，匹配「十五」时只吃下「十」，
+    // 剩下的「五」被当成食物名的一部分 —— 实测把 15 个饺子算成 10 份（2000g），
+    // 比真实值大六倍多，而且一声不吭。静默算错是这个模块最不能犯的错。
+    assert.equal(parseFragment("十五个饺子").amount, 15);
+    assert.equal(parseFragment("十一个饺子").amount, 11);
+    assert.equal(parseFragment("二十个饺子").amount, 20);
+    assert.equal(parseFragment("二十五个饺子").amount, 25);
+    assert.equal(parseFragment("三十个饺子").amount, 30);
+    assert.equal(parseFragment("十个饺子").amount, 10);
+    // 「十五」之后还得能把量词和食物名正常切出来
+    assert.equal(parseFragment("十五个饺子").unit, "个");
+    assert.equal(parseFragment("十五个饺子").name, "饺子");
+    // 单字与「半」照旧
+    assert.equal(parseFragment("三个饺子").amount, 3);
+    assert.equal(parseFragment("半碗米饭").amount, 0.5);
+  });
+
+  it("认不出来的中文数量词要退回，绝不硬猜、更不许产出 NaN", () => {
+    // 「两三」含糊相加就是 5，而用户的意思是「两三个」。取中值还是保守值
+    // 是另一个决定（路线图 P5.4），在那之前**不认**比认错强 —— 退回单字「两」。
+    assert.equal(parseFragment("两三个鸡蛋").amount, 2);
+    // 「一半」不是 1.5。认不出来时整串退回当食物名，amount 必须仍是有限数
+    // —— 一旦这里产出 NaN，它会一路写进 DietEntry.amount，变成账本里谁也解释不了的数
+    assert.ok(Number.isFinite(parseFragment("一半苹果").amount));
+    assert.ok(Number.isFinite(parseFragment("十五个饺子").amount));
+  });
 });
 
 describe("一句话记录 · 兜底不许算错", () => {
+  it("「15 个饺子」记成 15 个 300g（用户实测上报，曾经多出一个叫「5」的假食物）", () => {
+    // 用户看到的是界面上多了一条「「5」· 库里没有」，而饺子只剩 1 个（20g）。
+    // 端到端再钉一遍：解析出来的必须是**一条**，而且克数对得上份量表（个[饺子] = 20g）
+    const cs = resolveText("15 个饺子");
+    assert.equal(cs.length, 1);
+    assert.equal(cs[0].food?.name, "饺子");
+    assert.equal(cs[0].grams, 300);
+    assert.equal(cs[0].missing, false);
+  });
+
+  it("「十五个饺子」也是 300g，不是 10 份 2000g", () => {
+    const [c] = resolveText("十五个饺子");
+    assert.equal(c.food?.name, "饺子");
+    assert.equal(c.grams, 300);
+    assert.equal(c.missing, false);
+  });
+
   it("「一包 70g 的薯片」记成薯片 70g（曾经记成肉包 200g）", () => {
     const [c] = resolveText("一包 70g 的薯片");
     assert.equal(c.food?.name, "薯片");

@@ -46,7 +46,47 @@ const CN_NUM: Record<string, number> = {
 };
 
 const NUM = "[0-9]+(?:\\.[0-9]+)?";
-const CN_UNIT_NUM = "[一二两三四五六七八九十半]";
+
+/**
+ * 中文数量词的**词形**（不是单字字符类）。
+ *
+ * ⚠️ 这里必须整词匹配，不能再退回 `[一二两三四五六七八九十半]` 那种单字类：
+ * 单字类匹配「十五个饺子」时只吃下「十」，剩下的「五」被当成食物名的一部分 ——
+ * 实测结果是把 **15 个饺子算成 10 份（2000g）**，比真实值大六倍多，而且**一声不吭**。
+ * 静默算错是这个模块最不能犯的错（见文件头）。
+ *
+ * 刻意**只认到两位数**（十 / 十五 / 二十 / 二十五）：
+ * 「两三」「三四」这类约数连写是另一个语义（取中值还是保守值要单独定），
+ * 让它在这里被含糊地加起来（「两三」→ 5）不如不认 —— 那是 P5.4 的事。
+ */
+const CN_NUM_WORD = "(?:[一二两三四五六七八九]?十[一二两三四五六七八九]?|[一二两三四五六七八九半])";
+
+/**
+ * 中文数量词 → 数字。认不出来返回 null（**绝不猜**）。
+ *
+ * 认不出来时必须返回 null 而不是 0 或 NaN：调用方据此退回「整串当食物名」，
+ * 而 NaN 会一路写进 `DietEntry.amount`，变成账本里一个谁也解释不了的数。
+ */
+function cnToNumber(word: string): number | null {
+  if (word === "半") return 0.5;
+  const at = word.indexOf("十");
+  if (at === -1) {
+    // 没有「十」时只认单字：「两三」这种连写落在这里，返回 null 而不是 5
+    return word.length === 1 ? (CN_NUM[word] ?? null) : null;
+  }
+  const head = word.slice(0, at);
+  const tail = word.slice(at + 1);
+  const tens = head === "" ? 1 : (CN_NUM[head] ?? null);
+  const ones = tail === "" ? 0 : (CN_NUM[tail] ?? null);
+  if (tens === null || ones === null) return null;
+  return tens * 10 + ones;
+}
+
+/** 数量词统一入口：阿拉伯数字直接转，中文走 cnToNumber */
+function amountOf(token: string): number {
+  const n = cnToNumber(token);
+  return n ?? Number(token);
+}
 
 /**
  * 「自己称过」的单位。
@@ -80,7 +120,7 @@ const LEAD_NOISE = [
 ];
 
 const FRAGMENT_RE = new RegExp(
-  `^([0-9]+(?:\\.[0-9]+)?|[一二两三四五六七八九十半])?\\s*([${UNIT_CLASS}])?\\s*(.+)$`,
+  `^(${NUM}|${CN_NUM_WORD})?\\s*([${UNIT_CLASS}])?\\s*(.+)$`,
 );
 
 /**
@@ -93,7 +133,7 @@ const FRAGMENT_RE = new RegExp(
  * 所以这条路**只在真的说了份量时才走**；纯克数的形态交给下面 WEIGHT_RE / TRAILING_RE。
  */
 const COMBINED_RE = new RegExp(
-  `^(${NUM}|${CN_UNIT_NUM})\\s*([${UNIT_CLASS}])\\s*(${NUM})\\s*(?:${MEASURE_ALT})\\s*的?\\s*(.+)$`,
+  `^(${NUM}|${CN_NUM_WORD})\\s*([${UNIT_CLASS}])\\s*(${NUM})\\s*(?:${MEASURE_ALT})\\s*的?\\s*(.+)$`,
 );
 
 /** 「食物名 + 尾随克数」：薯片70克 / 薯片 70 克 */
@@ -105,7 +145,7 @@ const WEIGHT_RE = /([0-9]+(?:\.[0-9]+)?)\s*(克|g|G|ml|mL|ML|毫升)/;
 /**
  * 把「数量 / 克数 / 单位」之间的空白粘掉，免得切段时被切散。
  *
- * 只处理**阿拉伯数字 + 度量单位**的组合 —— 纯中文的量词之间不动，
+ * 只处理**带数量词的那几种组合** —— 纯中文量词之间不动，
  * 这样「一包薯片 一杯奶茶」仍然能按空白切成两段（用户确实是这么写的）。
  */
 export function glueMeasures(text: string): string {
@@ -113,8 +153,14 @@ export function glueMeasures(text: string): string {
     text
       // 「70 克」→「70克」
       .replace(new RegExp(`(${NUM})\\s+(${MEASURE_ALT})`, "g"), "$1$2")
+      // 「15 个饺子」→「15个饺子」。
+      // ⚠️ 这一条是补上来的：上面那条只认**度量单位**（克/g/ml），不认**量词**（个/包/杯），
+      // 于是「15 个饺子」被空白切成 ["15", "个饺子"] 两段 ——
+      // 前一段解析出一个叫「5」的食物（界面上就是「「5」· 库里没有」），
+      // 后一段只剩「1 个饺子」。用户明明说了 15 个，账本上记成 20g。
+      .replace(new RegExp(`(${NUM}|${CN_NUM_WORD})\\s+(?=[${UNIT_CLASS}])`, "g"), "$1")
       // 「一包 70g」→「一包70g」
-      .replace(new RegExp(`((?:${NUM}|${CN_UNIT_NUM})[${UNIT_CLASS}])\\s+(?=${NUM})`, "g"), "$1")
+      .replace(new RegExp(`((?:${NUM}|${CN_NUM_WORD})[${UNIT_CLASS}])\\s+(?=${NUM})`, "g"), "$1")
       // 「70g 的薯片」→「70g的薯片」
       .replace(new RegExp(`(${NUM}(?:${MEASURE_ALT}))\\s+(?=的)`, "g"), "$1")
       // 「薯片 70克」→「薯片70克」；「500ml 奶茶」→「500ml奶茶」
@@ -188,7 +234,7 @@ export function parseFragment(raw: string): ParsedFragment {
       return {
         raw,
         cleaned,
-        amount: cnt ? (CN_NUM[cnt] ?? Number(cnt)) : 1,
+        amount: cnt ? amountOf(cnt) : 1,
         unit: unit || undefined,
         name: nameOut,
         perUnitGrams: per,
@@ -231,7 +277,7 @@ export function parseFragment(raw: string): ParsedFragment {
     return {
       raw,
       cleaned,
-      amount: numToken ? (CN_NUM[numToken] ?? Number(numToken)) : 1,
+      amount: numToken ? amountOf(numToken) : 1,
       unit: unitOut,
       name: nameOut,
     };
