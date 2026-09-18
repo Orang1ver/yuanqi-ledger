@@ -85,7 +85,10 @@
     { "unit": "瓶", "match": ["啤酒"], "portions": [
       { "label": "一瓶", "grams": 500, "range": [330, 640], "isDefault": true }
     ] },
-    { "unit": "瓶", "match": ["油", "酱油", "老抽", "醋"], "portions": [
+    { "unit": "瓶", "match": ["瓶装橙汁", "瓶装绿茶", "无糖绿茶（瓶装）", "可乐", "雪碧", "冰红茶", "苏打水", "椰汁"], "portions": [
+      { "label": "一瓶", "grams": 500, "range": [330, 700], "isDefault": true, "note": "常见塑料瓶装 500ml" }
+    ] },
+    { "unit": "瓶", "match": ["酱油", "老抽", "蚝油", "醋", "植物油", "橄榄油"], "portions": [
       { "label": "一瓶", "grams": 500, "range": [250, 1000], "isDefault": true }
     ] },
 
@@ -117,17 +120,23 @@
     { "unit": "碗", "match": ["面条", "米线", "米粉", "凉皮"], "portions": [
       { "label": "一碗", "grams": 250, "range": [150, 350], "isDefault": true, "note": "指煮熟 / 泡发后的重量" }
     ] },
-    { "unit": "碗", "match": ["粥", "汤"], "portions": [
+    { "unit": "碗", "match": ["白粥", "小米粥", "皮蛋瘦肉粥", "南瓜粥", "鱼片粥", "红薯粥"], "portions": [
       { "label": "一碗", "grams": 300, "range": [200, 400], "isDefault": true, "note": "指煮好盛出来的重量；下锅前的生米只有四五十克" }
     ] },
-    { "unit": "碗", "match": ["饺子", "馄饨", "云吞"], "portions": [
+    { "unit": "碗", "match": ["紫菜蛋花汤", "番茄蛋汤", "排骨汤", "老火靓汤", "银耳汤", "绿豆汤", "冬瓜汤", "罗宋汤", "番茄牛腩汤", "上汤娃娃菜"], "portions": [
+      { "label": "一碗", "grams": 300, "range": [200, 450], "isDefault": true, "note": "指盛出来的汤与配料总重，不是锅里那一锅" }
+    ] },
+    { "unit": "碗", "match": ["饺子"], "portions": [
       { "label": "一碗", "grams": 250, "range": [150, 350], "isDefault": true, "note": "指煮好沥干后的重量，约 12 个中等饺子" }
+    ] },
+    { "unit": "碗", "match": ["馄饨", "云吞"], "portions": [
+      { "label": "一碗", "grams": 250, "range": [150, 350], "isDefault": true, "note": "指煮好沥干后的重量，约 15 个中等馄饨（馄饨比饺子轻）" }
     ] },
     { "unit": "碗", "match": ["豆腐脑", "豆花", "凉粉", "凉面", "热干面"], "portions": [
       { "label": "一碗", "grams": 300, "range": [200, 450], "isDefault": true }
     ] },
 
-    { "unit": "盘", "match": ["时蔬", "青菜", "菜", "豆腐", "茄子", "豆角", "土豆丝", "西兰花", "地三鲜", "香锅", "海带丝", "木耳", "豆芽"], "portions": [
+    { "unit": "盘", "match": ["时蔬", "青菜", "豆腐", "茄子", "豆角", "土豆丝", "西兰花", "地三鲜", "香锅", "海带丝", "木耳", "豆芽", "白菜", "卷心菜", "生菜", "油麦菜", "菠菜", "娃娃菜", "榨菜肉丝"], "portions": [
       { "label": "一盘", "grams": 250, "range": [150, 400], "isDefault": true, "note": "餐馆一盘菜的量，按可食部分算" }
     ] },
 
@@ -149,7 +158,7 @@
     { "unit": "盘", "match": ["蛋炒饭", "炒饭"], "portions": [
       { "label": "一盘", "grams": 320, "range": [250, 450], "isDefault": true, "note": "餐馆一盘的量" }
     ] },
-    { "unit": "份", "match": ["卤肉饭", "烤肉饭", "盖饭", "盖浇饭", "拌饭"], "portions": [
+    { "unit": "份", "match": ["卤肉饭", "烤肉饭", "拌饭"], "portions": [
       { "label": "一份", "grams": 300, "range": [250, 400], "isDefault": true, "note": "含米饭，按一份 300g 成品算" }
     ] },
     { "unit": "份", "match": ["猪脚饭", "烤鸭饭"], "portions": [
@@ -176,16 +185,19 @@
     { "unit": "份", "match": ["米饭", "面条", "米线", "凉皮"], "portions": [
       { "label": "一份", "grams": 200, "range": [150, 300], "isDefault": true, "note": "指煮熟 / 泡发后的重量" }
     ] },
-    { "unit": "份", "match": ["饺子", "馄饨", "云吞"], "portions": [
+    { "unit": "份", "match": ["饺子"], "portions": [
       { "label": "一份", "grams": 200, "range": [150, 300], "isDefault": true, "note": "指煮好沥干后的重量，约 10 个中等饺子" }
     ] },
-    { "unit": "份", "match": ["西瓜", "苹果", "葡萄", "水果"], "portions": [
+    { "unit": "份", "match": ["馄饨", "云吞"], "portions": [
+      { "label": "一份", "grams": 200, "range": [150, 300], "isDefault": true, "note": "指煮好沥干后的重量，约 12 个中等馄饨（馄饨比饺子轻）" }
+    ] },
+    { "unit": "份", "match": ["西瓜", "苹果", "葡萄"], "portions": [
       { "label": "一份", "grams": 200, "range": [100, 350], "isDefault": true }
     ] },
     { "unit": "份", "match": ["蛋糕", "冰淇淋"], "portions": [
       { "label": "一份", "grams": 100, "range": [60, 200], "isDefault": true }
     ] },
-    { "unit": "份", "match": ["肉", "鸡", "鱼", "虾", "牛", "羊", "猪", "排骨", "豆腐"], "portions": [
+    { "unit": "份", "match": ["排骨", "豆腐", "红烧肉", "回锅肉", "宫保鸡丁", "鱼香肉丝", "糖醋里脊", "清蒸鱼", "红烧鱼", "白切鸡", "水煮肉片", "京酱肉丝", "清炒虾仁", "卤牛肉", "铁板牛肉", "酸菜鱼", "烤鱼", "牛肉丸", "猪里脊", "鸡胸肉", "猪五花肉", "猪蹄", "炸鸡排", "榨菜肉丝", "蒸蛋羹"], "portions": [
       { "label": "一份", "grams": 150, "range": [100, 250], "isDefault": true, "note": "餐馆一盘菜的量，按可食部分算" }
     ] },
     { "unit": "份", "match": ["燕麦"], "portions": [
@@ -209,10 +221,10 @@
     { "unit": "份", "match": ["珍珠"], "portions": [
       { "label": "一份", "grams": 30, "range": [20, 50], "isDefault": true, "note": "奶茶里的珍珠，熟重" }
     ] },
-    { "unit": "份", "match": ["冬瓜", "苦瓜", "丝瓜", "南瓜", "西葫芦", "胡萝卜", "白萝卜", "莲藕", "山药", "洋葱", "韭菜", "金针菇", "香菇", "平菇", "杏鲍菇", "蘑菇"], "portions": [
+    { "unit": "份", "match": ["冬瓜", "苦瓜", "丝瓜", "南瓜", "西葫芦", "胡萝卜", "白萝卜", "莲藕", "山药", "洋葱", "韭菜", "金针菇", "香菇", "平菇", "杏鲍菇"], "portions": [
       { "label": "一份", "grams": 200, "range": [100, 350], "isDefault": true, "note": "家常一盘菜的量，按可食部估" }
     ] },
-    { "unit": "份", "match": ["时蔬", "青菜", "菜", "豆腐", "茄子", "豆角", "土豆丝", "西兰花", "地三鲜", "香锅", "海带丝", "木耳", "豆芽"], "portions": [
+    { "unit": "份", "match": ["时蔬", "青菜", "豆腐", "茄子", "豆角", "土豆丝", "西兰花", "地三鲜", "香锅", "海带丝", "木耳", "豆芽", "白菜", "卷心菜", "生菜", "油麦菜", "菠菜", "娃娃菜", "榨菜肉丝"], "portions": [
       { "label": "一份", "grams": 200, "range": [120, 350], "isDefault": true, "note": "外卖一盒家常菜的量，按可食部估" }
     ] },
     { "unit": "份", "match": ["鸡米花"], "portions": [
@@ -225,7 +237,7 @@
     { "unit": "个", "match": ["蛋黄派", "面包", "蛋糕"], "portions": [
       { "label": "一个", "grams": 60, "range": [30, 120], "isDefault": true }
     ] },
-    { "unit": "个", "match": ["鸡蛋", "蛋"], "portions": [
+    { "unit": "个", "match": ["鸡蛋", "水煮蛋", "白煮蛋", "煎蛋", "荷包蛋", "卤蛋", "咸鸭蛋", "皮蛋"], "portions": [
       { "label": "一个", "grams": 55, "range": [45, 70], "isDefault": true, "note": "可食部分，不含壳" }
     ] },
     { "unit": "个", "match": ["苹果"], "portions": [
@@ -234,7 +246,10 @@
     { "unit": "个", "match": ["橘子", "橙子"], "portions": [
       { "label": "一个", "grams": 150, "range": [100, 250], "isDefault": true }
     ] },
-    { "unit": "个", "match": ["梨", "桃", "芒果"], "portions": [
+    { "unit": "个", "match": ["菠萝", "凤梨"], "portions": [
+      { "label": "一盘", "grams": 300, "range": [150, 500], "isDefault": true, "note": "整个菠萝可食部约 500g，这里按切好的一盘估" }
+    ] },
+    { "unit": "个", "match": ["梨", "雪梨", "桃", "桃子", "水蜜桃", "芒果"], "portions": [
       { "label": "一个", "grams": 200, "range": [150, 300], "isDefault": true }
     ] },
     { "unit": "个", "match": ["猕猴桃"], "portions": [
@@ -266,11 +281,20 @@
     { "unit": "个", "match": ["玉米"], "portions": [
       { "label": "一个", "grams": 200, "range": [150, 300], "isDefault": true }
     ] },
+    { "unit": "个", "match": ["薯片", "土豆片"], "portions": [
+      { "label": "一小包", "grams": 50, "range": [30, 80], "isDefault": true, "note": "薯片说「个」多半指一小包；单片只有 2g 左右，那个量没有记录意义" }
+    ] },
     { "unit": "个", "match": ["土豆"], "portions": [
       { "label": "一个", "grams": 150, "range": [100, 250], "isDefault": true }
     ] },
     { "unit": "个", "match": ["紫薯"], "portions": [
       { "label": "一个", "grams": 120, "range": [80, 200], "isDefault": true }
+    ] },
+    { "unit": "个", "match": ["地瓜", "番薯", "蒸红薯", "烤红薯"], "portions": [
+      { "label": "一个", "grams": 200, "range": [120, 350], "isDefault": true }
+    ] },
+    { "unit": "个", "match": ["葱油饼", "手抓饼", "烙饼"], "portions": [
+      { "label": "一个", "grams": 120, "range": [80, 180], "isDefault": true }
     ] },
     { "unit": "个", "match": ["番茄", "西红柿"], "portions": [
       { "label": "一个", "grams": 150, "range": [100, 250], "isDefault": true }
@@ -322,13 +346,13 @@
     { "unit": "只", "match": ["小龙虾"], "portions": [
       { "label": "一只", "grams": 25, "range": [15, 40], "isDefault": true, "note": "按可食部分估" }
     ] },
-    { "unit": "只", "match": ["虾"], "portions": [
+    { "unit": "只", "match": ["虾", "白灼虾", "水煮虾"], "portions": [
       { "label": "一只", "grams": 15, "range": [10, 25], "isDefault": true }
     ] },
     { "unit": "只", "match": ["鸡腿", "鸡翅"], "portions": [
       { "label": "一只", "grams": 120, "range": [80, 180], "isDefault": true }
     ] },
-    { "unit": "只", "match": ["鸡蛋", "蛋"], "portions": [
+    { "unit": "只", "match": ["鸡蛋", "水煮蛋", "白煮蛋", "煎蛋", "荷包蛋", "卤蛋", "咸鸭蛋", "皮蛋"], "portions": [
       { "label": "一只", "grams": 55, "range": [45, 70], "isDefault": true }
     ] },
     { "unit": "只", "match": ["饺子"], "portions": [
@@ -375,34 +399,34 @@
       { "label": "一块", "grams": 100, "range": [70, 150], "isDefault": true, "note": "一角，整张约 6~8 角" }
     ] },
 
-    { "unit": "勺", "match": ["油"], "portions": [
+    { "unit": "勺", "match": ["植物油", "橄榄油", "猪油", "黄油", "花生油"], "portions": [
       { "label": "一勺", "grams": 10, "range": [5, 15], "isDefault": true, "note": "一瓷勺约 10ml" }
     ] },
-    { "unit": "勺", "match": ["糖"], "portions": [
+    { "unit": "勺", "match": ["糖", "白砂糖", "白糖", "冰糖"], "portions": [
       { "label": "一勺", "grams": 8, "range": [5, 12], "isDefault": true }
     ] },
-    { "unit": "勺", "match": ["酱油", "老抽", "醋", "蚝油"], "portions": [
+    { "unit": "勺", "match": ["酱油", "老抽", "生抽", "蚝油", "醋", "陈醋", "米醋"], "portions": [
       { "label": "一勺", "grams": 10, "range": [5, 15], "isDefault": true }
     ] },
     { "unit": "勺", "match": ["蜂蜜", "芝麻酱", "沙拉酱", "番茄酱", "豆瓣酱", "甜面酱"], "portions": [
       { "label": "一勺", "grams": 15, "range": [10, 20], "isDefault": true }
     ] },
-    { "unit": "勺", "match": ["盐"], "portions": [
+    { "unit": "勺", "match": ["盐", "食盐", "精盐"], "portions": [
       { "label": "一勺", "grams": 5, "range": [3, 8], "isDefault": true, "note": "一平勺约 5g，约等于 2000mg 钠" }
     ] },
 
-    { "unit": "串", "match": ["羊肉串", "烤"], "portions": [
+    { "unit": "串", "match": ["羊肉串", "烤羊肉串", "烤鸡翅", "烤肠"], "portions": [
       { "label": "一串", "grams": 30, "range": [20, 50], "isDefault": true }
     ] },
 
     { "unit": "把", "match": ["瓜子", "坚果", "花生"], "portions": [
       { "label": "一把", "grams": 30, "range": [20, 50], "isDefault": true }
     ] },
-    { "unit": "把", "match": ["韭菜", "青菜", "菠菜", "香菜", "芹菜", "茼蒿"], "portions": [
+    { "unit": "把", "match": ["韭菜", "青菜", "菠菜"], "portions": [
       { "label": "一把", "grams": 150, "range": [100, 250], "isDefault": true, "note": "买回来的一把叶菜，按可食部估" }
     ] },
 
-    { "unit": "条", "match": ["鱼"], "portions": [
+    { "unit": "条", "match": ["清蒸鱼", "红烧鱼", "蒸鱼", "烤鱼"], "portions": [
       { "label": "一条", "grams": 300, "range": [200, 600], "isDefault": true, "note": "按可食部分估" }
     ] },
     { "unit": "条", "match": ["培根"], "portions": [

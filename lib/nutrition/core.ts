@@ -337,11 +337,40 @@ export const FALLBACK_GRAMS: Record<FoodCategory, number> = {
 };
 
 /**
+ * 份量表里一个 `match` 词算不算命中了这条食物。
+ *
+ * ⚠️ **单字词只认精确命中**（食物名或别名正好就是那个字），多字词才做子串匹配。
+ *
+ * 为什么：`match` 是子串匹配，而表里混着单字词（蛋 / 油 / 菜 / 肉 / 鱼 / 烤…）。
+ * 「蛋炒饭」里的「蛋」、「油条」里的「油」、「鱼香肉丝」里的「鱼」全都算命中，于是
+ * 「一个蛋炒饭」按「一个鸡蛋」算成 **55g**（真实一份六百多）、
+ * 「一瓶油条」按一瓶植物油算成 **500g**、「一条鱼香肉丝」算成 300g。
+ *
+ * 实测（2026-09-19 扫了一遍）：这类单字命中一共 **100 处**，其中 **68 处**给出的克数
+ * 和「按分类兜底」**一模一样** —— 它一点信息都没带来，只带来了错的那部分。
+ *
+ * 判据与 `searchFoods` 拒收单字名字是同一条（见 AGENTS 地雷 20）：
+ * 单字太短，藏在任何词里都"命中"，所以只允许它代表**它自己**。
+ * 「梨」「桃」「虾」「醋」「盐」「糖」这些食物本来就正好叫这个字，精确命中照旧有效。
+ *
+ * ⚠️ 闸门 `scripts/check-nutrition.mjs` 里有一份**镜像**（纯 JS 的闸门没法 import .ts）。
+ * 那边漂移过一次、还漂得很难看：运行时改了这个判据，闸门还按子串算，
+ * 于是 3 条死规则 + 37 条失去覆盖的食物它一个都没报，照样全绿。
+ * 现在闸门的自证模式里有一条**只有精确匹配才拦得住**的破坏，改这里时别忘了同步那边。
+ */
+function wordMatches(word: string, names: readonly string[]): boolean {
+  return [...word].length === 1
+    ? names.some((n) => n === word)
+    : names.some((n) => n.includes(word));
+}
+
+/**
  * 在份量表里找「这个食物用这个量词」对应多少克。
  *
  * 匹配规则：
  *  - 先按量词精确匹配（「杯」只认「杯」，不认「大杯」）
- *  - 再在 `match` 里做**子串**匹配，命中食物名或任一别名即可
+ *  - 再在 `match` 里做匹配（**单字词精确、多字词子串**，见 `wordMatches`），
+ *    命中食物名或任一别名即可
  *  - 同一量词下**先命中先取**，所以特例必须写在通用规则前面
  *
  * 返回值带上是哪条规则命中的，方便界面把依据显示给用户看。
@@ -355,7 +384,7 @@ export function resolvePortion(
   const names = [food.name, ...(food.alias ?? [])];
   for (const rule of table.rules) {
     if (rule.unit !== unit) continue;
-    if (!rule.match.some((m) => names.some((n) => n.includes(m)))) continue;
+    if (!rule.match.some((m) => wordMatches(m, names))) continue;
 
     const portion =
       (label ? rule.portions.find((p) => p.label === label || p.label.includes(label)) : undefined) ??

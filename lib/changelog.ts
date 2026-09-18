@@ -17,6 +17,15 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.13.1",
+    date: "2026-09-19",
+    highlights: [
+      "修掉一批「看着正常、数字是错的」：一个蛋炒饭不再按一个鸡蛋算成 55g",
+      "一份油条/薯片/鱼香肉丝之类，以前会借别的食物的份量，现在算不出来就明说「估算」",
+      "馄饨的说明不再写成「约 12 个中等饺子」",
+    ],
+  },
+  {
     version: "0.13.0",
     date: "2026-09-19",
     highlights: [

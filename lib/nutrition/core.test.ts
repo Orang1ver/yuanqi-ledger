@@ -306,6 +306,64 @@ describe("份量解析", () => {
   });
 });
 
+/**
+ * ⚠️ 单字 match 词只认**精确**命中（食物名或别名正好就是那个字）。
+ *
+ * 这条规矩是 2026-09-19 定的，起因是一串真错数：份量表里混着「蛋 / 油 / 菜 / 肉 / 鱼 / 烤」
+ * 这类单字词，而 `match` 是子串匹配 —— 于是「蛋炒饭」里的「蛋」、「油条」里的「油」、
+ * 「鱼香肉丝」里的「鱼」全都算命中：
+ *   一个蛋炒饭 → 按一个鸡蛋算 55g（真实一份六百多，差 12 倍）
+ *   一瓶油条   → 按一瓶植物油算 500g
+ *   一条鱼香肉丝 → 按一条鱼算 300g
+ *   一串北京烤鸭 → 按一串烤串算 30g
+ * 实测这类单字命中 100 处，其中 68 处给出的克数和分类兜底**一模一样** ——
+ * 它没带来信息，只带来了错的那部分。
+ *
+ * 这里钉的是**真实数据 + 真实运行时**：谁要是把判据改回子串、或者把单字词又写回份量表，
+ * 这几条会当场红。判据本身在 `core.ts` 的 `wordMatches` 里。
+ */
+describe("份量规则的单字词只认精确命中", () => {
+  const table = portionTable();
+
+  it("⚠「一个蛋炒饭」不许借鸡蛋的 55g —— 该返回 null，让界面标「估算」", () => {
+    assert.equal(
+      resolvePortion(table, foodById("fried-rice")!, "个"),
+      null,
+      "蛋炒饭没有「个」这一档；借来一个 55g 的自信错数，比说「估不出来」有害得多",
+    );
+  });
+
+  it("⚠「一瓶油条」不许借植物油的 500g", () => {
+    assert.equal(resolvePortion(table, foodById("youtiao")!, "瓶"), null);
+  });
+
+  it("⚠「一条鱼香肉丝」「一串北京烤鸭」不许借鱼和烤串的克数", () => {
+    assert.equal(resolvePortion(table, foodById("yuxiangrousi")!, "条"), null);
+    assert.equal(resolvePortion(table, foodById("kaoya")!, "串"), null);
+  });
+
+  it("薯片说「个」按一小包估，不按一个土豆的 150g", () => {
+    const r = resolvePortion(table, foodById("shupian")!, "个")!;
+    assert.equal(r.grams, 50);
+    assert.match(r.portion.note ?? "", /一小包/);
+  });
+
+  it("但单字正好是食物名（或别名）时照旧有效：一个梨 / 一只白灼虾 / 一勺盐", () => {
+    // 「虾」是白灼虾的别名，精确命中仍然放行 —— 这条规矩禁的是"藏在长词里也算中"
+    assert.equal(resolvePortion(table, foodById("li")!, "个")!.grams, 200);
+    assert.equal(resolvePortion(table, foodById("xia-baizhuo")!, "只")!.grams, 15);
+    assert.equal(resolvePortion(table, foodById("yan")!, "勺")!.grams, 5);
+  });
+
+  it("⚠ 馄饨的份量说明写的是馄饨，不是饺子", () => {
+    // 原来饺子和馄饨共用一条规则，note 只有一份，于是馄饨的说明印着「约 12 个中等饺子」
+    const r = resolvePortion(table, foodById("wonton")!, "碗")!;
+    assert.match(r.portion.note ?? "", /馄饨/);
+    // 判据是"别把这一份**说成**饺子"（说明里提一句两者轻重不同是可以的）
+    assert.doesNotMatch(r.portion.note ?? "", /约 \d+ 个中等饺子/);
+  });
+});
+
 describe("浅解析", () => {
   it("剥掉时间词与动词，让量词能被认出来", () => {
     // 这一条是真踩过的坑：「晚上吃了一包薯片」若不剥噪音，
@@ -835,11 +893,16 @@ describe("常见口语不许因为缺别名就记不上", () => {
     // 这一批同样取自官方数据（快餐、小吃类），点外卖时直接说就行
     assert.equal(resolveText("一个汉堡")[0].food?.name, "鸡肉汉堡");
     assert.equal(resolveText("一个汉堡")[0].grams, 200);
-    assert.equal(resolveText("一份鸡米花")[0].grams, 150);
     assert.equal(resolveText("一份年糕")[0].grams, 150);
     assert.equal(resolveText("一块比萨")[0].grams, 100);
     assert.equal(resolveText("一碗热干面")[0].grams, 300);
     assert.equal(resolveText("一个鸡肉卷")[0].food?.name, "鸡肉卷");
+
+    // ⚠️ 「一份鸡米花」原来是 **150g** —— 那是单字「鸡」的泛化规则抢在前面的结果，
+    // 而库里专门给它写的那条（100g）**一直是死的**：份序是"先命中先赢"，
+    // 泛化的 `份[…鸡…]` 排在专门规则之前。2026-09-19 把单字词改成只认精确命中之后，
+    // 专门规则才真正生效，这条断言也跟着从 150 改成 100（**改的是错的那一侧**）。
+    assert.equal(resolveText("一份鸡米花")[0].grams, 100);
   });
 
   it("时间词「昨晚」「今早」要剥掉 —— 不然份量会跟着一起丢", () => {

@@ -16,6 +16,11 @@
 # 演示用样例数据备份（npm run demo:data）
 /.tmp-demo/
 
+# 兜底：临时文件一律别提交。
+# 加这条是因为真出过一次 —— 提交前顺手 `git add -A`，把写 commit message 用的
+# `.tmp-commit-msg.txt` 一起提交了（0.13.0 里带上了一个 40 行的垃圾文件）。
+/.tmp-*
+
 # 打好的安卓包（scripts/android/build-apk.ps1 的产物，属于构建输出不是源码）
 /dist/
 

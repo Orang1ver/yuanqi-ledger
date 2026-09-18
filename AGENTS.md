@@ -355,11 +355,31 @@ CRYPT_E_NO_REVOCATION_CHECK (0x80092012) - 吊销功能无法检查证书是否�
     需要类型就写 `.ts` 并用 `scripts/run-ts.mjs` 跑。
     要进仓库的脚本（如 `scripts/fetch-food-table.mjs`）更要在提交前跑一次。
 
+29. **闸门不许自己抄一份运行时逻辑 —— 抄了就会漂移，而且漂了还全绿**（2026-09-19 踩过）。
+    `scripts/check-nutrition.mjs` 是纯 JS，**没法 import `.ts`**，于是它自己抄了四份
+    `match` 匹配逻辑。运行时把判据改成"单字词只认精确命中"之后，闸门还按子串算 ——
+    结果「3 条死规则 + 37 条食物失去份量覆盖」它**一个都没报，整个闸门照样全绿**。
+    一条不再反映现实的闸门比没有闸门更糟：人会以为它还在守。
+    - 「真共享」试过两条路，都不通，别再走：
+      ① 判据放 `lib/**/*.mjs` → `scripts/run-ts.mjs`（`npm test` / `check:data` / `probe` 都走它）
+      **不编译 `.mjs`**，产物里没有那个文件，运行时 require 不到；
+      ② 给 `.mjs` 配 `.d.mts` 只解决类型，解决不了①。
+    - **做法**：镜像只能有一份（一个函数，四处检查都调它），并且**给它配一条只有新判据才拦得住的自证**
+      —— 见 `check-nutrition.mjs` 第五处破坏（往活规则里塞单字词「饺」）。
+      实测把判据退回子串时，`YQ_SELFTEST=1` 当场失败、退出码 2 并点名是哪条检查没拦下。
+    - 更一般地说：**闸门里凡是"重写一遍运行时逻辑"的地方，都要问一句"它凭什么不会漂"。**
+30. **「整条规则一个都没中」这种查法会把死词藏住**（同一天顺手挖出来的）。
+    份量表里一条规则的 `match` 混着 3 个活词 + 1 个死词时，按"整条规则"判就永远看不见死词 ——
+    而单字词（`蛋` / `油` / `肉` / `菜` / `鱼` / `烤`）恰恰都是这么躺进去的。
+    改成**逐词**查之后一次报出 8 处，其中 6 处（`盖饭` / `盖浇饭` / `水果` / `蘑菇` /
+    `香菜` / `芹菜` / `茼蒿`）是**一直躺在那儿的**：库里根本没有这些食物名，写了也永远不会命中。
+    **判据**：新增/修改这类"批量匹配表"时，报错粒度要细到**单个词**，不要只报"整条没用"。
+
 ### 安卓壳 / PowerShell / Gradle 的坑（2026-09-19 一次性踩齐）
 
 这一组和别的地雷不同：**它们不会让命令失败，只会让产物悄悄不对**，所以单独列。
 
-29. **Windows PowerShell 5.1 读 UTF-8 的方式是两面的，两边都咬人。**
+31. **Windows PowerShell 5.1 读 UTF-8 的方式是两面的，两边都咬人。**
     - **`.ps1` 文件本身**：无 BOM 时按 ANSI（本机 GBK）解码，中文注释里的字节会把**换行吃掉**
       （实测 69 行被读成 60 行），于是括号配对错位，报一个指不到真因的
       `Unexpected token ')'`。⇒ **本仓库的 `.ps1` 一律存成 UTF-8 with BOM**，
@@ -376,22 +396,22 @@ CRYPT_E_NO_REVOCATION_CHECK (0x80092012) - 吊销功能无法检查证书是否�
       而**赋值失败的变量是 `$null`** —— 版本号悄悄变成空字符串，一路写进 `sw.js` 的缓存名。
       ⇒ 读仓库里的文本文件一律显式指定编码：
       `[System.IO.File]::ReadAllText($path, [System.Text.Encoding]::UTF8)`。
-30. **Gradle 构建脚本里注释只用 ASCII。** Gradle 读构建脚本也走平台默认编码（本机 GBK），
-    和地雷 29 是同一个成因。`android/build.gradle`、`android/app/build.gradle`、
+32. **Gradle 构建脚本里注释只用 ASCII。** Gradle 读构建脚本也走平台默认编码（本机 GBK），
+    和地雷 31 是同一个成因。`android/build.gradle`、`android/app/build.gradle`、
     `gradle-wrapper.properties` 里的注释**故意写成英文**，别"顺手翻译成中文"。
     中文放 `strings.xml`（UTF-8 XML，没问题）和仓库里的文档里。
-31. **XML 注释里不能出现 `--`。** 我在 `strings.xml` 里写 `-- that is why` 当破折号，
+33. **XML 注释里不能出现 `--`。** 我在 `strings.xml` 里写 `-- that is why` 当破折号，
     aapt2 报 `注释中不允许出现字符串 "--"`。**双连字符在 XML 里是非法的**，换 `—` 或改写法。
-32. **`| Select-Object -First N` 会掐断上游命令。** 实测
+34. **`| Select-Object -First N` 会掐断上游命令。** 实测
     `& apksigner ... | Select-Object -First 3` 让一次**成功**的验签变成非零退出码
     （Select 拿到量就停上游，命令被中断）。凡是靠 `$LASTEXITCODE` 判断成败的地方，
     **先把整份输出收进变量，再看退出码，最后才截取显示**。
-33. **新增顶层目录后要看 eslint 的基线。** 加 `android/` 之后 `npx eslint .` 从 0 错变成
+35. **新增顶层目录后要看 eslint 的基线。** 加 `android/` 之后 `npx eslint .` 从 0 错变成
     **22 错 4384 警** —— 它在爬 `android/app/src/main/assets/public` 里那份 **cap sync 拷贝进去的
     Web 构建产物**。`eslint.config.mjs` 的 `globalIgnores` 里补了 `android/**` 与 `dist/**`。
     ⚠️ 这类"构建产物被 lint 到"的坑，判据是**基线数字**：这个项目基线是 0 错 0 警，
     看到几百条就要先问"我是不是把产物目录引进来了"，而不是去逐条修。
-34. **改了 `make-icons.py` 或主题色之后，别忘了安卓那份图标要重新铺。**
+36. **改了 `make-icons.py` 或主题色之后，别忘了安卓那份图标要重新铺。**
     它写在 `android/app/src/main/res/` 下，`cap sync` **不会**动它们
     （sync 只管 `assets/public`）。重跑 `python scripts/make-icons.py` 再打包。
     出图前脚本会自证环是居中的 —— 那个断言修的是一个**真实存在过的 bug**
@@ -472,7 +492,7 @@ curl -s "https://orang1ver.github.io/yuanqi-ledger/sw.js?cb=$(date +%s)" | grep 
 | **睡眠与心情的周聚合** | `lib/wellness.ts` |
 | 体重计算（周均、距健康区间） | `lib/weight.ts` |
 | **食物库（243 条，按每 100g/ml）** | `data/foods.zh.json` |
-| **份量换算规则（127 条）** | `data/foodPortions.json` |
+| **份量换算规则（135 条）** | `data/foodPortions.json` |
 | **档位反推（这条记录当时按哪一档算的）** | `lib/nutrition/tiers.ts` |
 | **「这个数不对？」入口（每条记录旁边）** | `app/components/diet/EntryFeedback.tsx` |
 | **AI 归因 / 反馈文本拼装（一个数字都不产生）** | `lib/ai/feedback.ts` |

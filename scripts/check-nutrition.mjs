@@ -25,6 +25,32 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 
+// ---------- 命中判据（⚠️ 与 lib/nutrition/core.ts 的 wordMatches 是同一份语义）----------
+
+/**
+ * ⚠️ 这里是**镜像**：闸门是纯 JS（.mjs），没法 import `.ts`。
+ * 试过的两条"真共享"的路都不通，别再走一遍：
+ *   - 把判据放进 `lib/nutrition/wordMatch.mjs` → `scripts/run-ts.mjs`（npm test /
+ *     check:data / probe 都走它）**不编译 `.mjs`**，产物里没有这个文件，运行时 require 不到；
+ *   - 给 `.mjs` 配 `.d.mts` 声明 → 只解决类型，解决不了上面那条。
+ * 所以只能镜像一份，用下面自证模式里那条**只有精确匹配才拦得住**的破坏来防漂移。
+ *
+ * 判据：**单字词只认精确命中**（食物名或别名正好就是那个字），多字词才做子串匹配。
+ * 起因与理由见 `core.ts` 里 `wordMatches` 的注释 —— 一句话：
+ * 单字词命中过 100 处，其中 68 处给出的克数和分类兜底一模一样，剩下的全是错。
+ */
+const wordMatches = (word, names) =>
+  [...word].length === 1 ? names.some((n) => n === word) : names.some((n) => n.includes(word));
+
+/** 一条规则能不能命中这条食物 */
+const ruleMatchesFood = (rule, names) => (rule.match ?? []).some((m) => wordMatches(m, names));
+
+/** 这个词能不能命中库里的**任意一条**名字（查死词用） */
+const wordMatchesAny = (word, names) => {
+  for (const n of names) if (wordMatches(word, [n])) return true;
+  return false;
+};
+
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const SELFTEST = process.env.YQ_SELFTEST === "1";
 
@@ -135,11 +161,15 @@ if (SELFTEST) {
    * 抽掉规则的话，「白粥」会变成"一条规则都命中不了"，那就变成 ④b 在报 ——
    * 测到的不是 ④d（地雷 23：破坏要走到被测的那一层）。
    *
-   * 挑 `碗[粥,汤]` 是因为它命中的「白粥 / 小米粥」source 都写着「煮」，
+   * 挑 `碗[白粥,…]` 是因为它命中的「白粥 / 小米粥」source 都写着「煮」，
    * 正是这条检查存在的理由。
+   *
+   * ⚠️ 定位词从「粥」改成了「白粥」：单字「粥」在 2026-09-19 被换成显式名单了
+   * （单字只认精确命中），用旧定位词会**找不到这条规则**、自证报错退出 ——
+   * 这个哨兵是有效的，改数据时它当场就叫了。
    */
   const congeeDefault = PORTIONS.rules.find(
-    (r) => r.unit === "碗" && (r.match ?? []).includes("粥"),
+    (r) => r.unit === "碗" && (r.match ?? []).includes("白粥"),
   )?.portions.find((p) => p.isDefault);
   if (!congeeDefault?.note) {
     console.error("✗ 自证失败：找不到碗的粥规则默认档（或它本来就没有 note）—— 破坏点没落到位");
@@ -147,11 +177,34 @@ if (SELFTEST) {
   }
   delete congeeDefault.note;
 
+  /*
+   * 第五处破坏，喂给「死词」那条检查 —— 而且这一条**只有精确匹配才拦得住**。
+   *
+   * 往一条活规则的 match 里塞一个单字词「饺」：库里没有哪条食物正好叫「饺」，
+   * 所以它一条都命中不了，死词检查应当报出来。
+   *
+   * ⚠️ 这条同时是**闸门判据的防漂移哨兵**。判据是「单字只认精确命中」，
+   * 而闸门是纯 JS、只能镜像一份（没法 import .ts，见文件头）。2026-09-19 真漂过一次：
+   * 运行时改成了精确匹配、闸门还按子串算，于是 3 条死词 + 37 条失去覆盖的食物
+   * 它一个都没报，整个闸门照样全绿。
+   * 如果哪天判据又退回子串，「饺」会命中「饺子」、死词检查不报，**这次自证就会失败** ——
+   * 也就是说这条破坏不只是测检查，它测的是判据本身。
+   */
+  const jiaoziRule = PORTIONS.rules.find(
+    (r) => r.unit === "碗" && (r.match ?? []).includes("饺子"),
+  );
+  if (!jiaoziRule) {
+    console.error("✗ 自证失败：找不到 碗[饺子] 那条规则 —— 破坏点没落到位");
+    process.exit(2);
+  }
+  jiaoziRule.match.push("饺");
+
   sabotaged =
     `把「${victim.name}」的脂肪从 34 改成 3.4；` +
     "并塞进一条没有任何份量规则能命中的食物「自证用孤儿食物」；" +
     "再抽掉碗的干重专门规则，让「挂面」掉回熟重的 250g；" +
-    "最后抹掉「一碗粥」那条规则的 note";
+    "抹掉「一碗粥」那条规则的 note；" +
+    "最后往「一碗饺子」的 match 里塞一个谁也叫不上的单字词「饺」";
 }
 
 // ---------- 收集问题 ----------
@@ -287,9 +340,23 @@ for (const [i, r] of (PORTIONS.rules ?? []).entries()) {
     }
   }
 
-  // 死规则：match 里的词一条食物都命中不了，多半是打错了食物名
-  const hits = (r.match ?? []).filter((m) => [...allNames].some((n) => n.includes(m)));
-  if (!hits.length) fail(at, `match 里的词没有任何一条食物命中：[${(r.match ?? []).join("、")}] —— 是不是食物名打错了？`);
+  // 死词：逐个 match 词查，打不中任何一条食物就报出来。
+  //
+  // ⚠️ 刻意做成**逐词**而不是"整条规则一个都没中"：那是 2026-09-19 之前的写法，
+  // 一条规则里混着 3 个活词 + 1 个死词时，死词永远看不见 ——
+  // 而单字词（蛋 / 油 / 肉 / 菜 / 鱼 / 烤…）恰恰都是这么躺进去的。
+  // 现在单字只认精确命中，这些词当场露出来。
+  const deadWords = (r.match ?? []).filter((m) => !wordMatchesAny(m, allNames));
+  if (deadWords.length) {
+    const singles = deadWords.filter((m) => [...m].length === 1);
+    fail(
+      at,
+      `match 里的这些词一条食物都命中不了：[${deadWords.join("、")}] —— ` +
+        (singles.length
+          ? `其中 ${singles.join("、")} 是单字词，而单字只认精确命中（库里没有正好叫这个名字的食物），等于白写`
+          : "是不是食物名打错了？"),
+    );
+  }
 }
 
 // ---------- ④b 份量表与食物库的联动 ----------
@@ -308,7 +375,7 @@ const portionCovered = new Set();
 for (const r of PORTIONS.rules ?? []) {
   for (const f of LIBRARY.items ?? []) {
     const names = [f.name, ...(f.alias ?? [])];
-    if ((r.match ?? []).some((m) => names.some((n) => n.includes(m)))) portionCovered.add(f.id);
+    if (ruleMatchesFood(r, names)) portionCovered.add(f.id);
   }
 }
 for (const f of LIBRARY.items ?? []) {
@@ -348,9 +415,7 @@ for (const f of LIBRARY.items ?? []) {
 
   for (const unit of portionUnits) {
     // 与 core.ts 的 resolvePortion 保持同一个顺序：同一量词下先命中先取
-    const rule = (PORTIONS.rules ?? []).find(
-      (r) => r.unit === unit && (r.match ?? []).some((m) => names.some((n) => n.includes(m))),
-    );
+    const rule = (PORTIONS.rules ?? []).find((r) => r.unit === unit && ruleMatchesFood(r, names));
     if (!rule) continue;
 
     const portion = rule.portions.find((p) => p.isDefault) ?? rule.portions[0];
@@ -398,9 +463,7 @@ for (const f of LIBRARY.items ?? []) {
   if (!COOKED_SOURCE_RE.test(f.source ?? "")) continue;
 
   for (const unit of AMBIGUOUS_UNITS) {
-    const rule = (PORTIONS.rules ?? []).find(
-      (r) => r.unit === unit && (r.match ?? []).some((m) => names.some((n) => n.includes(m))),
-    );
+    const rule = (PORTIONS.rules ?? []).find((r) => r.unit === unit && ruleMatchesFood(r, names));
     if (!rule) continue;
 
     const portion = rule.portions.find((p) => p.isDefault) ?? rule.portions[0];
@@ -471,16 +534,22 @@ function report() {
 const failed = report();
 
 if (SELFTEST) {
-  // 四处破坏各对应一条检查，四条都必须在 problems 里出现才算自证通过。
+  // 五处破坏各对应一条检查，五条都必须在 problems 里出现才算自证通过。
   // 只断言"有问题"是不够的：那样其中一条检查坏掉了也照样绿。
-  const expectKinds = ["闭合校验不过", "没有任何份量规则命中", "干重数据", "没写这个克数指什么"];
+  const expectKinds = [
+    "闭合校验不过",
+    "没有任何份量规则命中",
+    "干重数据",
+    "没写这个克数指什么",
+    "一条食物都命中不了",
+  ];
   const missingKinds = expectKinds.filter((k) => !problems.some((p) => p.msg.includes(k)));
   if (missingKinds.length) {
     console.error(`\n✗ 自证失败：故意改坏了数据，这些检查却没拦下 —— ${missingKinds.join("、")}。`);
     console.error("  永远通过的闸门等于没有闸门，先去修那条检查。");
     process.exit(2);
   }
-  console.log(`\n✓ 自证通过：四处破坏都被对应的检查拦下了（共 ${problems.length} 个问题）。`);
+  console.log(`\n✓ 自证通过：五处破坏都被对应的检查拦下了（共 ${problems.length} 个问题）。`);
   console.log("  永远通过的闸门等于没有闸门，所以这一步不能省。");
   process.exit(0);
 }
