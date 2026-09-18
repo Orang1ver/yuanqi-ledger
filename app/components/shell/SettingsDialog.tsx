@@ -178,6 +178,9 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
               className="yq-btn yq-btn-sm yq-btn-primary"
               onClick={() => {
                 saveApiKeys({ deepseekKey: key.trim() || undefined });
+                // 广播一次：首页那张推荐卡靠它决定「帮我挑」按钮要不要出现。
+                // 不广播的话，用户粘完 Key 得手动刷新才看得到入口 —— 他会以为没生效。
+                emitDataChanged();
                 setKeySaved(true);
               }}
             >

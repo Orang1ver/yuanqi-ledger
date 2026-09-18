@@ -523,6 +523,192 @@ async function checkMealPreset(page, baseUrl, failures) {
   }
 }
 
+// ---------- 「帮我挑」：无 Key 隐藏 / 有 Key 走通 / 模型数字不上屏 ----------
+
+/**
+ * 首页推荐卡的「✨ 帮我挑」。
+ *
+ * 这条检查要同时钉住四件事，任何一件松掉都该立刻变红：
+ *
+ * 1) **没填 Key 时按钮不出现。** 一个点了只会报错的按钮比没有按钮更烦人。
+ *    所以先删掉 `recipe.apikeys.v1`，断言页面上找不到这个按钮。
+ * 2) **填了 Key 就立刻出现，不用刷新。** 写完 Key 后只 dispatch 一次
+ *    `yq:data-changed`（这正是 SettingsDialog 保存 Key 后做的事）——
+ *    少了这次广播，用户粘完 Key 回首页什么也不会发生，他会以为没生效。
+ * 3) **白名单说了算，不是模型说了算。** 拦截器故意回一道菜单里根本没有的菜，
+ *    它**不许**出现在屏幕上。
+ * 4) **模型嘴里的数字不上屏。** 回包里塞 `kcal: 99999`、理由里硬写「大约 12345 kcal」，
+ *    两者都不许出现在屏幕文字里；而本地算出来的热量必须照常画出来。
+ *
+ * ⚠️ 前置状态**自己造**，不依赖 fixtures：样本库里的「拌面」在食物库里查不到，
+ * `estimateDish` 会判成「估不出来」而不进候选池 —— 拿它当断言词会测了个寂寞。
+ * 所以这里写一份自己知道成分的菜单（番茄蛋汤 / 红烧肉 / 清炒时蔬 / 蛋炒饭，
+ * 四道在库里都能整名命中），再写一顿钠超标的午饭把缺口坐实。
+ *
+ * ⚠️ 断言用**请求真的发出去了**（calls/auth/prompt 里有没有那道菜）来兜底：
+ * 只断言"屏幕上出现了菜名"的话，本地推荐那一路也可能恰好推出同一道菜，
+ * 检查会在接口根本没被调用的情况下全绿。
+ */
+async function checkAiPick(page, baseUrl, failures) {
+  const DISH_OK = "番茄蛋汤";
+  const DISH_FAKE = "凭空捏造的菜";
+  const FAKE_KCAL = 99999;
+  const FAKE_REASON_NUM = 12345;
+  const FAKE_KEY = "sk-smoke-fake";
+
+  await goto(page, `${baseUrl}/?ai=${Date.now()}`);
+
+  // ---- 1) 造前置：自备菜单 + 一顿重口午饭，并且先不放 Key ----
+  const seeded = await evaluate(
+    page,
+    `(() => {
+      const dishes = ${JSON.stringify(
+        ["番茄蛋汤", "红烧肉", "清炒时蔬", "蛋炒饭"].map((name, i) => ({
+          id: `smoke-ai-${i}`,
+          restaurant: "冒烟测试店",
+          name,
+          category: "测试",
+          flavorTags: [],
+          avoidConflicts: [],
+        })),
+      )};
+      localStorage.setItem("recipe.takeoutMock.v2", JSON.stringify(dishes));
+      localStorage.setItem("recipe.takeoutSeeded.v1", "true");
+
+      const d = new Date();
+      const pad = (n) => (n < 10 ? "0" + n : String(n));
+      const today = d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+      localStorage.setItem("recipe.dietLog.v1", JSON.stringify([{
+        id: "smoke-ai-meal",
+        date: today,
+        time: "12:30",
+        mealSlot: "午餐",
+        name: "重口的一顿",
+        amount: 1,
+        unitLabel: "份",
+        grams: 500,
+        nutrition: { kcal: 1900, protein: 60, fat: 80, carb: 220, sodium: 4800, fiber: 3 },
+        source: "custom",
+        createdAt: Date.now(),
+      }]));
+
+      localStorage.removeItem("recipe.apikeys.v1");
+      window.dispatchEvent(new Event("yq:data-changed"));
+      return today;
+    })()`,
+  );
+
+  const findPickButton = `[...document.querySelectorAll("button")].find((b) => b.innerText.includes("帮我挑"))`;
+
+  const withoutKey = await evaluate(
+    page,
+    `(async () => {
+      const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+      for (let i = 0; i < 20 && !${findPickButton}; i++) await sleep(100);
+      return { hasButton: !!${findPickButton}, text: document.body.innerText };
+    })()`,
+  );
+
+  if (withoutKey.hasButton) {
+    failures.push(
+      "没填 DeepSeek Key 时首页仍然显示了「帮我挑」按钮 —— 点下去只会报错，这个入口不该出现",
+    );
+    console.log("✗ 帮我挑（无 Key）：按钮不该出现却出现了");
+  } else if (!withoutKey.text.includes("今天还该吃点啥")) {
+    failures.push("首页找不到「今天还该吃点啥」这张卡 —— 检查的前置没成立");
+    console.log("✗ 帮我挑：找不到推荐卡");
+  } else {
+    console.log("✓ 帮我挑：没填 Key 时不显示按钮");
+  }
+
+  // ---- 2) 填入 Key（只广播一次，不刷新）→ 按钮必须出现 ----
+  await evaluate(
+    page,
+    `(() => {
+      localStorage.setItem("recipe.apikeys.v1", JSON.stringify({ deepseekKey: ${JSON.stringify(FAKE_KEY)} }));
+      window.dispatchEvent(new Event("yq:data-changed"));
+      return true;
+    })()`,
+  );
+
+  // ---- 3) 装拦截器 → 点按钮 → 收证据 ----
+  const r = await evaluate(
+    page,
+    `(async () => {
+      const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+      const findBtn = () => ${findPickButton};
+
+      for (let i = 0; i < 25 && !findBtn(); i++) await sleep(100);
+      if (!findBtn()) return { ok: false, why: "填了 Key 之后按钮还是没出现（data-changed 广播没接上？）" };
+
+      window.__yqAi = { calls: [] };
+      const realFetch = window.fetch.bind(window);
+      window.fetch = (input, init) => {
+        const url = typeof input === "string" ? input : (input && input.url) || "";
+        if (!url.includes("api.deepseek.com")) return realFetch(input, init);
+        const body = init && typeof init.body === "string" ? JSON.parse(init.body) : null;
+        const auth = (init && init.headers && init.headers.Authorization) || "";
+        window.__yqAi.calls.push({ url, auth, body });
+        const content = JSON.stringify({
+          picks: [
+            { index: 1, reason: "今天菜吃得少，这个清淡；大约 ${FAKE_REASON_NUM} kcal", kcal: ${FAKE_KCAL} },
+            { name: ${JSON.stringify(DISH_FAKE)}, reason: "这道不在菜单里，该被挡掉" },
+          ],
+        });
+        return Promise.resolve(new Response(JSON.stringify({ choices: [{ message: { content } }] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }));
+      };
+
+      findBtn().click();
+      // 等到 AI 那一路渲染出来（「换一批」只在 done 状态出现）
+      for (let i = 0; i < 40; i++) {
+        await sleep(100);
+        if ([...document.querySelectorAll("button")].some((b) => b.innerText.includes("换一批"))) break;
+      }
+      await sleep(150);
+
+      const calls = window.__yqAi.calls;
+      const user = calls.length ? (calls[0].body.messages.find((m) => m.role === "user") || {}).content || "" : "";
+      return {
+        ok: true,
+        calls: calls.length,
+        auth: calls.length ? calls[0].auth : "",
+        promptHasDish: user.includes(${JSON.stringify(DISH_OK)}),
+        text: document.body.innerText,
+      };
+    })()`,
+  );
+
+  if (!r.ok) {
+    failures.push(`帮我挑：${r.why}`);
+    console.log(`✗ 帮我挑检查没跑成：${r.why}`);
+    return;
+  }
+
+  const shown = (s) => r.text.includes(s);
+  const checks = [
+    { name: "接口真的被调了一次", pass: r.calls === 1, detail: `calls=${r.calls}` },
+    { name: "请求带着设置里的 Key", pass: r.auth === `Bearer ${FAKE_KEY}`, detail: `auth=${r.auth || "(空)"}` },
+    { name: "菜单里的菜进了 prompt", pass: r.promptHasDish, detail: "" },
+    { name: "1 号菜画到了屏幕上", pass: shown(DISH_OK), detail: "" },
+    { name: "本地估的热量画出来了", pass: shown("kcal"), detail: "" },
+    { name: "菜单里没有的菜没上屏", pass: !shown(DISH_FAKE), detail: DISH_FAKE },
+    { name: "模型编的热量没上屏", pass: !shown(String(FAKE_KCAL)), detail: String(FAKE_KCAL) },
+    { name: "模型理由里的数字没上屏", pass: !shown(String(FAKE_REASON_NUM)), detail: String(FAKE_REASON_NUM) },
+  ];
+
+  const bad = checks.filter((c) => !c.pass);
+  console.log(
+    `${bad.length ? "✗" : "✓"} 帮我挑（假 Key；前置数据 ${seeded}，接口调用 ${r.calls} 次）：` +
+      checks.map((c) => `${c.pass ? "" : "✗"}${c.name}`).join(" · "),
+  );
+  for (const c of bad) {
+    failures.push(`帮我挑：${c.name}${c.detail ? `（${c.detail}）` : ""}`);
+  }
+}
+
 // ---------- 按需拉起预览服务 ----------
 //
 // 冒烟测试依赖一个静态服务把 out/ 挂在子路径下。要求人先手动起服务，
@@ -811,6 +997,9 @@ try {
 
   // 这一条会真往账本里记一批「两菜一汤」，同样放在只读断言之后
   await checkMealPreset(page, BASE_URL, failures);
+
+  // 这一条会**覆盖**菜单库与饮食记录（前置自己造），必须排在最后
+  await checkAiPick(page, BASE_URL, failures);
 
   if (failures.length) {
     console.log(`\n✗ ${failures.length} 个页面没显示出应有的内容（数据来源：${seedLabel}）：`);

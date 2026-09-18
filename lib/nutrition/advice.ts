@@ -40,6 +40,17 @@ export type AdviceIssue = {
   action: string;
   /** 替换方案：把什么换成什么 */
   swap?: string;
+  /**
+   * **定性**的一句话：只说"哪一项偏了"，一个数字都不许有。
+   *
+   * 存在的理由是「AI 推荐外卖」那条路：喂给模型的必须是定性描述 ——
+   * 一旦把「钠还差 1800mg」塞进 prompt，模型就会把那个数字复述进它的措辞里，
+   * 于是屏幕上出现了一个**没人审计过的第二数字来源**（项目红线，见 AGENTS.md 第 3 节）。
+   *
+   * 放在这里而不是让调用方自己写一份，是为了让「判定偏了哪一项」只有一个出处：
+   * 两处各写一套阈值，迟早出现 advice 说 A、prompt 说 B。
+   */
+  hint: string;
 };
 
 /**
@@ -134,6 +145,7 @@ export function findIssues(input: {
       fact: `今天钠 ${Math.round(v.sodium)}mg，是目标 ${sodium.target}mg 的 ${Math.round(sodium.ratio * 100)}%。${attr?.text ?? ""}`,
       action: "今天剩下一顿别再放酱油、蚝油、豆瓣酱，咸菜与加工肉先停一次",
       swap: attr ? swapFor(attr.entry) : "把调味重的菜换成一荤一素、只放盐的做法",
+      hint: "今天钠吃多了",
     });
   }
 
@@ -148,6 +160,7 @@ export function findIssues(input: {
       fact: `今天 ${Math.round(v.kcal)}kcal，超出目标 ${kcal.target}kcal 的 ${Math.round((kcal.ratio - 1) * 100)}%。${attr?.text ?? ""}`,
       action: "下一顿把主食减三分之一，先吃菜和蛋白",
       swap: attr ? swapFor(attr.entry) : "把油炸、糖醋这类做法换成清蒸或白灼",
+      hint: "今天热量已经够了甚至超了",
     });
   }
 
@@ -160,6 +173,7 @@ export function findIssues(input: {
       fact: `零食与甜饮占了今天热量的 ${Math.round(ultraShare * 100)}%，大致是 ${Math.round(ultraKcal)}kcal。`,
       action: "今天剩下的时间只喝水或无糖茶，别再开零食袋",
       swap: "嘴馋的话换成一小把原味坚果或一个苹果",
+      hint: "零食和甜饮占得偏多",
     });
   }
 
@@ -174,6 +188,7 @@ export function findIssues(input: {
       fact: `蔬果只占今天热量的 ${Math.round(vegFruit * 100)}%，基本没有吃到。`,
       action: "下一顿先安排一份绿叶菜，再考虑别的",
       swap: "把桌上的一个肉菜换成清炒时蔬或凉拌菜",
+      hint: "蔬菜水果基本没吃到",
     });
   }
 
@@ -187,6 +202,7 @@ export function findIssues(input: {
       fact: `膳食纤维 ${v.fiber.toFixed(1)}g，只到目标 ${fiber.target}g 的 ${Math.round(fiber.ratio * 100)}%。`,
       action: "主食里换一半成杂粮、燕麦或薯类",
       swap: "把白米饭换成杂粮饭，再补一份凉拌木耳或芹菜",
+      hint: "膳食纤维偏少",
     });
   }
 
@@ -199,6 +215,7 @@ export function findIssues(input: {
       fact: `脂肪供能占了 ${Math.round(fatShare * 100)}%，高于建议的 20%~30%。`,
       action: "今天剩下的菜用蒸煮，别再煎炒",
       swap: "把红烧、干煸换成清蒸或白灼",
+      hint: "油水偏多",
     });
   } else if (daySettled && fatShare > 0 && fatShare < 0.18) {
     issues.push({
@@ -208,6 +225,7 @@ export function findIssues(input: {
       fact: `脂肪供能只有 ${Math.round(fatShare * 100)}%，低于建议的 20%~30%。`,
       action: "炒菜正常放油，可以加一份坚果",
       swap: "把水煮菜换成少油快炒，或者加一勺芝麻酱",
+      hint: "油水偏少",
     });
   }
 
@@ -221,6 +239,7 @@ export function findIssues(input: {
       fact: `蛋白质 ${v.protein.toFixed(1)}g，只到目标 ${protein.target}g 的 ${Math.round(protein.ratio * 100)}%。`,
       action: "下一顿加一个水煮蛋或一份鸡胸/豆腐",
       swap: "把一部分主食换成鸡蛋、无糖酸奶或豆制品",
+      hint: "蛋白质可能不够",
     });
   }
 

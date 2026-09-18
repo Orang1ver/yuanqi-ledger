@@ -17,6 +17,15 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.5.0",
+    date: "2026-09-18",
+    highlights: [
+      "首页「今天还该吃点啥」多了「✨ 帮我挑」：填了 DeepSeek Key 之后，可以从你自己的菜单里挑 2~3 道，各带一句理由",
+      "热量仍然是本地按食物库估的区间 —— 模型只负责挑和措辞，不产生任何营养数字",
+      "没填 Key 时不显示这个入口；挑不出来或调用失败，自动退回原来的本地推荐",
+    ],
+  },
+  {
     version: "0.4.0",
     date: "2026-09-18",
     highlights: [
