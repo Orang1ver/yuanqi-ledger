@@ -3,9 +3,9 @@
 import { useMemo, useState } from "react";
 import { BottomNav, PageHeader } from "../components/shell/BottomNav";
 import { addDays, formatShort, formatWeekRange, todayISO, weekDates, weekStartOf } from "@/lib/date";
-import { calcDailyTargets } from "@/lib/health";
+import { calcDailyTargets, healthyWeightRange } from "@/lib/health";
 import { exerciseStats, weekStats } from "@/lib/exercise";
-import { deltaVsDaysAgo } from "@/lib/weight";
+import { averageWeightOf, deltaVsDaysAgo, progressToHealthyRange } from "@/lib/weight";
 import { loadCheckin, loadExercises, loadHealthProfile, loadWeights } from "@/lib/storage/health";
 import { entriesOn } from "@/lib/storage";
 import { sumNutrition } from "@/lib/nutrition/core";
@@ -13,6 +13,7 @@ import { scoreDay, summarizeWeek } from "@/lib/nutrition/score";
 import { calcNutritionTargets } from "@/lib/nutrition/targets";
 import type { NutritionTargets } from "@/lib/nutrition/types";
 import { readinessOfWeek } from "@/lib/weekly";
+import { SLEEP_REFERENCE_HOURS, weekWellness } from "@/lib/wellness";
 
 /**
  * 一周里每天的饮食质量分。
@@ -49,15 +50,35 @@ export default function WeeklyPage() {
     const checkins = days.map((d) => loadCheckin(d)).filter((c): c is NonNullable<typeof c> => !!c);
     const exercises = loadExercises().filter((e) => e.date >= weekStart && e.date <= addDays(weekStart, 6));
     const weights = loadWeights();
+    const weekWeights = days.map((d) => weights[d]).filter((x): x is NonNullable<typeof x> => !!x);
     return {
       checkins,
       ex: weekStats(loadExercises(), weekStart),
       exAll: exerciseStats(loadExercises()),
       exList: exercises,
       weightDelta: deltaVsDaysAgo(weights, addDays(weekStart, 6) > today ? today : addDays(weekStart, 6), 7),
-      weightDays: days.filter((d) => weights[d]).length,
+      weightDays: weekWeights.length,
+      /** 本周均值：一份都没称就是 null，界面据此说「这周没称」而不是显示 0 */
+      weightAvg: averageWeightOf(weekWeights),
+      /**
+       * 睡眠 / 心情。
+       * ⚠️ 运动日期要一起传进去：那句「心情好且有运动」的对照**两侧都得有数据**才成立，
+       * 只传一边会让"没有运动记录"被读成"心情好的时候都没运动"。
+       */
+      wellness: weekWellness({ checkins, exerciseDates: exercises.map((e) => e.date) }),
     };
   }, [weekStart, today, days]);
+
+  /**
+   * 距健康体重区间还差多少。用**本周均值**而不是某一次称重 —— 单次波动说明不了趋势。
+   *
+   * 刻意**不 memo**：`loadHealthProfile()` 每次都返回新对象，拿它当依赖等于每次都重算，
+   * 挂个 useMemo 只会让人误以为这里有缓存（`useDayNutrition` 里是同一个取舍）。
+   */
+  const weightProgress =
+    profile && data.weightAvg !== null
+      ? progressToHealthyRange(data.weightAvg, healthyWeightRange(profile))
+      : null;
 
   const readiness = targets ? readinessOfWeek(data.checkins, targets) : null;
 
@@ -254,6 +275,56 @@ export default function WeeklyPage() {
           )}
         </section>
 
+        {/* 睡眠与心情 */}
+        <section className="yq-card" style={{ marginBottom: 14 }}>
+          <div className="yq-section-title">
+            <span>睡眠与心情</span>
+            <span className="yq-hint">
+              {data.wellness.sleepDays > 0 || data.wellness.moodDays > 0
+                ? `睡眠 ${data.wellness.sleepDays} 天 · 心情 ${data.wellness.moodDays} 天`
+                : "这周没记"}
+            </span>
+          </div>
+
+          {data.wellness.sleepDays === 0 && data.wellness.moodDays === 0 ? (
+            <div className="yq-empty">
+              这一周没记睡眠和心情。
+              <br />
+              在「今天」页打卡时顺手填一下，这里就能看出这一周睡得怎么样、状态如何。
+            </div>
+          ) : (
+            <>
+              {data.wellness.avgSleep !== null && (
+                <p style={{ fontSize: 15, marginBottom: 10 }}>
+                  平均睡 <b className="yq-num">{data.wellness.avgSleep}</b> 小时
+                  <span className="yq-hint">
+                    （{data.wellness.sleepDays} 晚有记录
+                    {data.wellness.enoughSleepDays > 0
+                      ? `，其中 ${data.wellness.enoughSleepDays} 晚到 ${SLEEP_REFERENCE_HOURS} 小时`
+                      : ""}
+                    ）
+                  </span>
+                </p>
+              )}
+
+              {data.wellness.moodDays > 0 && (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+                  <BigStat label="状态不错" value={`${data.wellness.moodCounts.好}`} unit="天" color="var(--yq-primary)" />
+                  <BigStat label="一般" value={`${data.wellness.moodCounts.一般}`} unit="天" color="var(--yq-info)" />
+                  <BigStat label="比较累" value={`${data.wellness.moodCounts.累}`} unit="天" color="var(--yq-accent)" />
+                </div>
+              )}
+
+              {data.wellness.goodMoodWithExercise !== null && (
+                <p className="yq-hint" style={{ marginTop: 10, lineHeight: 1.6 }}>
+                  这周记了 {data.wellness.exerciseDays} 天运动，其中 {data.wellness.goodMoodWithExercise} 天也记了「状态不错」。
+                  这两件事只是同一周里都发生了，看不出谁导致谁 —— 也可能只是那几天正好有空。
+                </p>
+              )}
+            </>
+          )}
+        </section>
+
         {/* 体重 */}
         <section className="yq-card" style={{ marginBottom: 14 }}>
           <div className="yq-section-title">
@@ -270,6 +341,26 @@ export default function WeeklyPage() {
             </p>
           ) : (
             <div className="yq-empty">这周边上还没有可对比的体重记录</div>
+          )}
+
+          {data.weightAvg !== null && (
+            <p style={{ fontSize: 15, marginTop: 10 }}>
+              本周均值 <b className="yq-num">{data.weightAvg}</b> kg
+              <span className="yq-hint">
+                （{data.weightDays} 天 · 只称一次就是那一次，不按 7 天摊）
+              </span>
+            </p>
+          )}
+
+          {weightProgress && (
+            <p className="yq-hint" style={{ marginTop: 8, lineHeight: 1.6 }}>
+              按你的身高，健康体重区间是 {weightProgress.range.min}~{weightProgress.range.max} kg，
+              {weightProgress.inRange
+                ? "本周均值就在区间里。"
+                : `距${weightProgress.direction === "lose" ? "上沿" : "下沿"}还差 ${weightProgress.distanceKg} kg。`}
+              <br />
+              这只是按 BMI 18.5~23.9 算的**参考区间**，不是给你定的目标 —— 该增该减看你自己。
+            </p>
           )}
         </section>
 

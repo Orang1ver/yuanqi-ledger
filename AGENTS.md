@@ -378,6 +378,8 @@ curl -s "https://orang1ver.github.io/yuanqi-ledger/sw.js?cb=$(date +%s)" | grep 
 | 连续天数与徽章 | `lib/rewards.ts` |
 | 运动统计与里程碑 | `lib/exercise.ts` |
 | 周维度达标率 | `lib/weekly.ts` |
+| **睡眠与心情的周聚合** | `lib/wellness.ts` |
+| 体重计算（周均、距健康区间） | `lib/weight.ts` |
 | **食物库（223 条，按每 100g/ml）** | `data/foods.zh.json` |
 | **份量换算规则（111 条）** | `data/foodPortions.json` |
 | **数值引用台账（出处，不存数值）** | `data/foodSources.json` |

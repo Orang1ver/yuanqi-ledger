@@ -615,6 +615,94 @@ async function checkPortionChip(page, baseUrl, failures) {
   }
 }
 
+// ---------- 周报的睡眠与心情：没记录时不许显示 0 ----------
+
+/**
+ * 周报页新加的「睡眠与心情」卡。
+ *
+ * 这里真正要钉住的只有一件事：**「没有记录」不是 0**（地雷 11/17）。
+ * 一晚都没记时如果平均算成 0，屏幕上会理直气壮地写「平均睡 0 小时」——
+ * 那是个吓人的假结论，而它看起来和真数据一模一样。
+ *
+ * 所以检查分两半：
+ *   ① 样例数据本来有睡眠记录 → 必须出现「平均睡」；此时不该出现「平均睡 0 小时」；
+ *   ② 把 dailyCheckins 里的 sleepHours/mood 全删掉、重新进页面 →
+ *      必须出现「这周没记」，而且**依然不许**出现「0 小时」。
+ * 只做 ① 的话，`avgSleep` 写成 0 时照样能过 —— 所以 ② 才是关键那一半。
+ */
+async function checkWellness(page, baseUrl, failures) {
+  await goto(page, `${baseUrl}/weekly/?wellness=${Date.now()}`);
+
+  const withData = await evaluate(
+    page,
+    `(() => {
+      const t = document.body.innerText;
+      return { hasCard: t.includes("睡眠与心情"), hasAvg: t.includes("平均睡"), zero: /平均睡\\s*0\\s*小时/.test(t) };
+    })()`,
+  );
+
+  // 把**睡眠**从打卡记录里抹掉，但**保留心情**。
+  //
+  // ⚠️ 这一步的前置是精心挑的（地雷 23 的教训）：两张都抹掉的话，卡片会走
+  // 「这周没记睡眠和心情」的空态，`avgSleep` 是 null 还是 0 根本露不出来 ——
+  // 第一版就是这么写的，把 `null` 改成 `0` 之后检查照样全绿。
+  // 留着心情，卡片就必须走有数据那一支，这时「没有睡眠记录却显示平均睡 0 小时」
+  // 才会真的画到屏幕上。
+  const wiped = await evaluate(
+    page,
+    `(() => {
+      const raw = localStorage.getItem("recipe.dailyCheckins.v1");
+      if (!raw) return false;
+      const obj = JSON.parse(raw);
+      for (const k of Object.keys(obj)) {
+        if (obj[k] && typeof obj[k] === "object") delete obj[k].sleepHours;
+      }
+      localStorage.setItem("recipe.dailyCheckins.v1", JSON.stringify(obj));
+      return true;
+    })()`,
+  );
+
+  if (!wiped) {
+    failures.push("睡眠与心情：样例数据里没有 recipe.dailyCheckins.v1，检查的前置没成立");
+    console.log("✗ 睡眠与心情：没有打卡数据可清，检查没跑成");
+    return;
+  }
+
+  await goto(page, `${baseUrl}/weekly/?wellness2=${Date.now()}`);
+  const withoutData = await evaluate(
+    page,
+    `(() => {
+      const t = document.body.innerText;
+      return {
+        stillHasMood: t.includes("状态不错") || t.includes("比较累"),
+        hasAvg: t.includes("平均睡"),
+        zero: /平均睡\\s*0\\s*小时/.test(t),
+      };
+    })()`,
+  );
+
+  const ok =
+    withData.hasCard &&
+    withData.hasAvg &&
+    withoutData.stillHasMood &&
+    !withoutData.hasAvg &&
+    !withData.zero &&
+    !withoutData.zero;
+
+  console.log(
+    `${ok ? "✓" : "✗"} 周报「睡眠与心情」：有记录时显示平均睡眠；只抹掉睡眠后仍显示心情、` +
+      `但不再谈平均睡眠（0 小时出现次数：有数据 ${withData.zero ? 1 : 0} / 无睡眠 ${withoutData.zero ? 1 : 0}）`,
+  );
+
+  if (!withData.hasCard) failures.push("周报页没有「睡眠与心情」这张卡 —— 睡眠和心情的字段一直没人用");
+  else if (!withData.hasAvg) failures.push("样例数据里有睡眠记录，周报却没显示「平均睡」");
+  else if (!withoutData.stillHasMood) failures.push("心情记录还在，卡片却整个退成了空态 —— 有数据的那一支没走到");
+  else if (withoutData.hasAvg) failures.push("一晚睡眠都没记，周报却还在显示「平均睡」");
+  if (withData.zero || withoutData.zero) {
+    failures.push("周报出现了「平均睡 0 小时」—— 那是把「没记」说成了「睡了 0 小时」");
+  }
+}
+
 // ---------- 「帮我挑」：无 Key 隐藏 / 有 Key 走通 / 模型数字不上屏 ----------
 
 /**
@@ -1092,6 +1180,9 @@ try {
 
   // 这一条会往账本里记一条薯片，同样放在只读断言之后
   await checkPortionChip(page, BASE_URL, failures);
+
+  // 这一条会把打卡记录里的睡眠/心情抹掉，所以必须在所有依赖它们的断言之后
+  await checkWellness(page, BASE_URL, failures);
 
   // 这一条会**覆盖**菜单库与饮食记录（前置自己造），必须排在最后
   await checkAiPick(page, BASE_URL, failures);

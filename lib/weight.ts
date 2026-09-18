@@ -91,6 +91,47 @@ export function weightRange(entries: WeightEntry[]): { min: number; max: number 
   return { min: round1(lo - pad), max: round1(hi + pad) };
 }
 
+/**
+ * 一组体重记录的均值（周报用「本周均值」）。
+ *
+ * ⚠️ **一条都没有时返回 `null`，不是 0** —— 那和「这周平均 0 公斤」是两件事，
+ * 后者会让页面显示一个荒谬的数字（见 AGENTS 地雷 11）。
+ * 也刻意**不按 7 天摊**：这周只称了两次，那就是两次的平均。
+ */
+export function averageWeightOf(entries: readonly WeightEntry[]): number | null {
+  if (!entries.length) return null;
+  return round1(entries.reduce((sum, e) => sum + e.weightKg, 0) / entries.length);
+}
+
+export type WeightProgress = {
+  /** 当前体重是否落在健康区间里 */
+  inRange: boolean;
+  /** 距最近那条边界还差多少 kg。已经在区间内就是 0 */
+  distanceKg: number;
+  /** 该往哪边走。⚠️ 只是**方位**，不是"好坏" —— 该增该减取决于用户自己的目标 */
+  direction: "lose" | "gain" | "keep";
+  range: { min: number; max: number };
+};
+
+/**
+ * 距健康体重区间还差多少。
+ *
+ * ⚠️ 刻意接收**区间**而不是健康档案：这一层不依赖 `lib/health.ts`，
+ * 保持"纯计算、谁来谁算"的性子（区间由调用方用 `healthyWeightRange(profile)` 算好）。
+ *
+ * ⚠️ **不下「你该减肥」的结论**：`direction` 只说往哪边。一个增肌期的人离区间上沿
+ * 越来越近，和减脂的人方向是反的 —— 是好在坏不由这里判。
+ */
+export function progressToHealthyRange(
+  weightKg: number,
+  range: { min: number; max: number },
+): WeightProgress {
+  const inRange = weightKg >= range.min && weightKg <= range.max;
+  const distanceKg = inRange ? 0 : round1(weightKg > range.max ? weightKg - range.max : range.min - weightKg);
+  const direction: WeightProgress["direction"] = inRange ? "keep" : weightKg > range.max ? "lose" : "gain";
+  return { inRange, distanceKg, direction, range };
+}
+
 /** 差值文案，如 "↑0.3" / "↓0.2" / "持平" */
 export function deltaText(diff: number): string {
   if (Math.abs(diff) < 0.05) return "持平";

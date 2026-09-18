@@ -4,7 +4,7 @@
 > 每项带编号、目标、版本、改动文件、验收标准、依赖关系。
 > 红线与发布纪律见 `AGENTS.md`；AI 推荐外卖的细化方案见 `docs/HANDOFF-AI-RECOMMEND.md`。
 
-**当前版本：0.6.2** · 最后更新：2026-09-18
+**当前版本：0.7.0** · 最后更新：2026-09-18
 
 ---
 
@@ -233,22 +233,33 @@
 
 ---
 
-## 六、P7 覆盖维度深化 → 0.7.0（MINOR）
+## 六、✅ P7 覆盖维度深化 → **0.7.0（已完成）**
 
-> **现状关键发现**：睡眠/心情字段已存在（`DailyCheckin.sleepHours/mood`），但周报页（`app/weekly/page.tsx`）**对它们零分析**——只算水和步数达标率（`readinessOfWeek`）。体重有 `lib/weight.ts`（sortWeights/deltaVsPrevious 等）和周报「±X kg」显示，但**无趋势/周均/目标进度**。
+> **当初的关键发现**：睡眠/心情字段早就在（`DailyCheckin.sleepHours/mood`），但周报页
+> **对它们零分析** —— 只算水和步数达标率。体重有 `lib/weight.ts` 与周报「±X kg」，
+> 但**没有周均、没有进度**。**数据齐了，缺的只是有人去看它。**
 
-- **目标**：
-  1. **睡眠趋势**：补周均睡眠、睡眠与「次日精力/心情」的简单对照。
-  2. **心情与饮食/运动关联**：把 `mood` 与当天的饮食质量分、运动量做一个轻量关联展示（如「心情好的日子运动更规律」这类观察，不强行下因果结论）。
-  3. **体重趋势**：补「周均体重」「距目标体重进度」。
-- **改动**：
-  - 新建纯函数（仿 `lib/exercise.ts` 的 `weekStats` / `lib/weekly.ts` 的 `readinessOfWeek` 范式）：`lib/wellness.ts`（睡眠/心情周聚合）或扩展 `lib/weekly.ts`、`lib/weight.ts`。
-  - `app/weekly/page.tsx` 加「睡眠/心情」板块。
-  - 单测 + 冒烟（自证会失败）。
-- **注意**：跨维度关联是**观察性**展示，不许下因果结论、不许伪造相关性。
-- **版本**：0.7.0（MINOR）。
+- **落地**：
+  - 新建 `lib/wellness.ts`（仿 `exercise.ts` 的 `weekStats` 范式）：`weekWellness({ checkins, exerciseDates })`
+    → `sleepDays / avgSleep / enoughSleepDays / moodDays / moodCounts / exerciseDays / goodMoodWithExercise`。
+  - `lib/weight.ts` 补 `averageWeightOf`（周均）与 `progressToHealthyRange`（距区间）。
+    后者刻意接收**区间**而不是健康档案，这样这一层不依赖 `lib/health.ts`；
+    区间由调用方用既有的 `healthyWeightRange(profile)` 算好（**复用，不新造字段**）。
+  - 周报页加「睡眠与心情」卡（放在运动之后、体重之前 —— 那句对照需要运动数据），
+    体重卡补「本周均值」与「距健康区间」。
+- **两条规矩**：
+  1. **「没有记录」不是 0**：`avgSleep` 与周均都是 `null`，页面说「这周没记」。
+     冒烟专门验了这一点 —— 而且第一版检查**没验到**（把睡眠和心情全抹掉会让卡片走空态，
+     `null`/`0` 的区别根本露不出来），改成**只抹睡眠、保留心情**才真的红（地雷 23 的同类坑）。
+  2. **不做因果**：`goodMoodWithExercise` 只在**两侧都有数据**时才给数字（否则 `null`），
+     页面固定带免责句，**不做相关系数**。
+- **注意**：`app/weekly/page.tsx` 里 `weightProgress` **刻意不 memo** ——
+  `loadHealthProfile()` 每次返回新对象，拿它当依赖会被 React Compiler 判为
+  "memoization 无法保留"（lint 直接报错），与 `useDayNutrition` 是同一个取舍。
+- **验收**：单测 `lib/wellness.test.ts` + `lib/weight.test.ts`（163 → 180 条）；
+  冒烟 `checkWellness` 自证会失败。
 
-**依赖**：无（原始数据字段已齐）。
+**依赖**：无。
 
 ---
 
@@ -293,7 +304,8 @@
 | **0.6.0** ✅ | **P6.1 第一批**：新增 26 条基础食材 + 引用台账 + `check:reference` + 份量表联动校验 | MINOR |
 | **0.6.1** ✅ | 追加 13 条外卖快餐/小吃（真实菜单库驱动）+ 修「昨晚」丢份量 | PATCH |
 | **0.6.2** ✅ | **P5.3 完成**：份量档位接进「记一笔」（抽 `PortionChips` 共用 + 删死代码） | PATCH |
-| 0.7.0 | **P7 睡眠/心情/体重深化**（数据早就有，周报页一个板块都没有） | MINOR |
+| **0.7.0** ✅ | **P7 完成**：周报加「睡眠与心情」+ 体重周均与健康区间进度 | MINOR |
+| 0.7.x | **P8 剩余**：数值人工校核（需要用户参与，我给待核清单）；P6.1 第二/三批 | PATCH |
 | 0.6.x | **P6.1 第二/三批**（成品菜、回填 source）；P5.3 份量档位点选 | PATCH 或 MINOR |
 | 0.6.x | P6.2 条码（若数据源干净） | 视情况 |
 | 0.7.0 | P7 睡眠/心情/体重深化 | MINOR |
@@ -321,9 +333,9 @@
 
 ```bash
 BASE_PATH=/yuanqi-ledger npm run build   # 沙箱外
-npm test                  # 当前 163 条（含 mealPresets、AI 推荐、口语解析边界、食材与快餐）
+npm test                  # 当前 180 条（含 mealPresets、AI 推荐、口语解析、睡眠心情、体重周均）
 npm run check:data        # 数据层兼容（15 项）
-npm run smoke             # 真实 Edge 渲染 + 5 个定向交互检查（餐次 / 一顿饭 / 份量档位 / 帮我挑）
+npm run smoke             # 真实 Edge 渲染 + 6 个定向交互检查（餐次 / 一顿饭 / 份量档位 / 睡眠心情 / 帮我挑）
 npm run check:nutrition   # 食物库质检（算术自洽 + 每条食物有没有份量规则）
 npm run check:reference   # 引用台账（标了外部来源的条目必须登记在册）
 python scripts/verify-subpath.py --base /yuanqi-ledger

@@ -17,6 +17,15 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.7.0",
+    date: "2026-09-18",
+    highlights: [
+      "周报多了「睡眠与心情」：这一周平均睡几小时、有几晚到 7 小时、心情各几天",
+      "体重卡补了「本周均值」和「距健康体重区间还差多少」",
+      "没记录的那几天不参与平均 —— 不会再显示成「睡了 0 小时」",
+    ],
+  },
+  {
     version: "0.6.2",
     date: "2026-09-18",
     highlights: [
