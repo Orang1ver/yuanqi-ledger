@@ -22,7 +22,7 @@
 - 线上站点：<https://orang1ver.github.io/yuanqi-ledger/>（Pages 源 = `gh-pages`/root，`https_enforced`）
 - 技术栈：Next.js 16 App Router + TS 5 + Tailwind 4，`output: "export"`（纯静态导出），PWA
 - 部署：`node scripts/deploy.mjs`（校验版本三处同步 → 构建 → 注入 SW 版本 → 强推 `gh-pages` → 打 tag）
-- **当前已上线 0.3.0**：`main` = `ff4466e`，`gh-pages` = `94941fd`，tag `v0.3.0`
+- **当前已上线 0.4.0**：`main` = `5c2dd7a`，`gh-pages` = `c675d53`，tag `v0.4.0`
 
 ### 环境事实（本机专属，很容易踩）
 
@@ -39,7 +39,8 @@
 用户此前明确提过两个诉求，其中「AI 推荐外卖」这一项**已经做了方案选择、尚未开工**：
 
 1. （已解决，0.3.0）记录太死板 / 单位显示错 / 记不了正餐 —— **本轮已全部修完并上线，不用再碰**。
-2. **（本次要做的）AI 推荐外卖** —— 用户已拍板：
+2. （已解决，0.4.0）「一顿饭一键记」—— 已落地，见 `docs/ROADMAP.md`。
+3. **（本次要做的）AI 推荐外卖** —— 用户已拍板：
    - 方案：**单任务接线**（不是完整 agent）。点一下 → 一次调用 → 返回 2~3 个候选。
    - 不要多轮对话，不要工具循环，不要会话状态机。
    - Key：**用户说「现在就填」**（设置页粘贴 DeepSeek Key，未填时入口自动隐藏、不报错）。
@@ -159,8 +160,8 @@
 
 ```bash
 BASE_PATH=/yuanqi-ledger npm run build   # smoke 前置，必须在沙箱外跑
-npm test                  # 单测（当前 123 条）
-npm run check:data        # 数据层兼容（14 项）
+npm test                  # 单测（当前 129 条）
+npm run check:data        # 数据层兼容（15 项）
 npm run smoke             # 界面层：真实 Edge 渲染 + 截图（5 页 + 定向检查）
 npm run check:nutrition   # 食物库质检
 python scripts/verify-subpath.py --base /yuanqi-ledger
@@ -174,8 +175,8 @@ python scripts/verify-subpath.py --base /yuanqi-ledger
 
 ## 8. 版本与发布
 
-- **成块新功能 → MINOR**：这次做完应升到 **0.4.0**。
-- 三处同步：`package.json` / `CHANGELOG.md`（顶部加 `## [0.4.0] - 日期`）/ `lib/changelog.ts`（数组最前插入）。
+- **成块新功能 → MINOR**：这次做完应升到 **0.5.0**。
+- 三处同步：`package.json` / `CHANGELOG.md`（顶部加 `## [0.5.0] - 日期`）/ `lib/changelog.ts`（数组最前插入）。
 - 发版：`node scripts/deploy.mjs`（`deploy.mjs` 会校验三处一致，漏了不让发）。
 - 发布后核对：5 页 200、`sw.js` 的 `APP_VERSION` 变成新版本（CDN 要等 1~3 分钟，轮询别急着判失败）、产物里新旧文案正反两面 grep。
 
