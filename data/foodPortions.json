@@ -108,6 +108,9 @@
       { "label": "一碗", "grams": 180, "range": [150, 250], "isDefault": true, "note": "约一两半米，指熟重" },
       { "label": "大碗", "grams": 250, "range": [220, 300] }
     ] },
+    { "unit": "碗", "match": ["麻辣烫", "冒菜"], "portions": [
+      { "label": "一碗", "grams": 500, "range": [350, 700], "isDefault": true, "note": "含汤水；汤别喝光的话盐会少一截" }
+    ] },
     { "unit": "碗", "match": ["挂面", "干面条", "面条（干）", "米粉（干）", "干米粉", "粉丝（干）", "粉条", "红薯粉丝"], "portions": [
       { "label": "一碗", "grams": 80, "range": [60, 120], "isDefault": true, "note": "按干重算（干面条 / 干米粉 / 干粉丝），煮熟或泡发后约 240g" }
     ] },
@@ -128,6 +131,18 @@
       { "label": "一盘", "grams": 250, "range": [150, 400], "isDefault": true, "note": "餐馆一盘菜的量，按可食部分算" }
     ] },
 
+    { "unit": "份", "match": ["卤肉饭", "烤肉饭", "盖饭", "盖浇饭", "拌饭"], "portions": [
+      { "label": "一份", "grams": 300, "range": [250, 400], "isDefault": true, "note": "含米饭，按一份 300g 成品算" }
+    ] },
+    { "unit": "份", "match": ["麻辣烫", "冒菜"], "portions": [
+      { "label": "一份", "grams": 500, "range": [350, 700], "isDefault": true, "note": "含汤水；汤别喝光的话盐会少一截" }
+    ] },
+    { "unit": "份", "match": ["重庆小面", "小面", "炒米粉", "炒米线", "炒粉"], "portions": [
+      { "label": "一份", "grams": 310, "range": [250, 400], "isDefault": true, "note": "指整份端上来的量" }
+    ] },
+    { "unit": "份", "match": ["甘梅地瓜条", "地瓜条"], "portions": [
+      { "label": "一份", "grams": 155, "range": [100, 250], "isDefault": true }
+    ] },
     { "unit": "份", "match": ["挂面", "干面条", "面条（干）", "米粉（干）", "干米粉", "粉丝（干）", "粉条", "红薯粉丝"], "portions": [
       { "label": "一份", "grams": 80, "range": [60, 120], "isDefault": true, "note": "按干重算（干面条 / 干米粉 / 干粉丝），煮熟或泡发后约 240g" }
     ] },

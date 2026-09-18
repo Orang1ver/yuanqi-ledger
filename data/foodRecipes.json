@@ -1,0 +1,82 @@
+{
+  "meta": {
+    "version": 1,
+    "updated": "2026-09-18",
+    "note": "成品菜的配方。这些条目的数值**不是抄来的，是照这张表加出来的** —— 想核对就拿原料回库里查、按克数加权、再除以成品重量（见 scripts/check-food-reference.mjs 的重算校验）。原料一律用本库的基础食材，各自的出处见 foodSources.json。⚠️ 可靠性的锚在原料上：原料错了这里跟着错，所以闸门只保证「算得对」，保证不了「配方就是这家店的做法」。"
+  },
+  "recipes": [
+    {
+      "foodId": "malatang",
+      "yieldG": 500,
+      "note": "一份含汤水约 500g；汤别喝光的话盐会少一截",
+      "parts": [
+        { "foodId": "juancai", "grams": 60 },
+        { "foodId": "jinzhengu", "grams": 30 },
+        { "foodId": "doufugan", "grams": 20 },
+        { "foodId": "niurouwan", "grams": 30 },
+        { "foodId": "fangbianmian", "grams": 40 },
+        { "foodId": "doubanjiang", "grams": 10 },
+        { "foodId": "zhiwuyou", "grams": 10 }
+      ]
+    },
+    {
+      "foodId": "luroufan",
+      "yieldG": 285,
+      "note": "含米饭；五花肉用「里脊 + 植物油」近似，所以脂肪那一项偏保守",
+      "parts": [
+        { "foodId": "rice-cooked", "grams": 200 },
+        { "foodId": "zhuliji", "grams": 50 },
+        { "foodId": "xianggu-xian", "grams": 25 },
+        { "foodId": "jiangyou", "grams": 10 },
+        { "foodId": "baitang", "grams": 5 },
+        { "foodId": "zhiwuyou", "grams": 8 }
+      ]
+    },
+    {
+      "foodId": "kaoroufan",
+      "yieldG": 315,
+      "note": "含米饭；烤肉按带骨烤鸡腿的出肉量算",
+      "parts": [
+        { "foodId": "rice-cooked", "grams": 200 },
+        { "foodId": "kaojitui", "grams": 80 },
+        { "foodId": "shengcai", "grams": 30 },
+        { "foodId": "zhiwuyou", "grams": 5 }
+      ]
+    },
+    {
+      "foodId": "chongqing-xiaomian",
+      "yieldG": 310,
+      "note": "含汤与调料；面条指煮熟后",
+      "parts": [
+        { "foodId": "noodles-cooked", "grams": 250 },
+        { "foodId": "xiaobaicai", "grams": 30 },
+        { "foodId": "zhiwuyou", "grams": 10 },
+        { "foodId": "jiangyou", "grams": 8 },
+        { "foodId": "doubanjiang", "grams": 10 },
+        { "foodId": "baitang", "grams": 3 }
+      ]
+    },
+    {
+      "foodId": "chao-mifen",
+      "yieldG": 345,
+      "note": "米粉指煮熟后；一份含油约 10g",
+      "parts": [
+        { "foodId": "rice-noodle-cooked", "grams": 250 },
+        { "foodId": "jidan-zhu", "grams": 50 },
+        { "foodId": "huotuichang", "grams": 30 },
+        { "foodId": "zhiwuyou", "grams": 10 },
+        { "foodId": "jiangyou", "grams": 8 }
+      ]
+    },
+    {
+      "foodId": "ganmei-digua",
+      "yieldG": 155,
+      "note": "红薯炸后失水，成品约为生重的 85%；甘梅粉不计（量太小）",
+      "parts": [
+        { "foodId": "sweetpotato-steamed", "grams": 150 },
+        { "foodId": "zhiwuyou", "grams": 20 },
+        { "foodId": "baitang", "grams": 10 }
+      ]
+    }
+  ]
+}

@@ -322,14 +322,15 @@ MSYS_NO_PATHCONV=1 BASE_PATH=/yuanqi-ledger npm run build      # 必须成功
 python scripts/verify-subpath.py                                # 子路径点击自检
 ```
 
-改了**数据层 / 食物库 / 营养层**时，上面三道之外再加这五道（含义见 README「五道闸门」）：
+改了**数据层 / 食物库 / 营养层**时，上面三道之外再加这六道（含义见 README「闸门」）：
 
 ```bash
 npm run check:data        # 既有结构的数据还读得出来吗
 npm run smoke             # 真实浏览器里真的画出来了吗（5 个页面）
 npm run check:nutrition   # 食物库算术自洽吗 + 每条食物有没有份量规则
-npm run check:reference   # 标了外部来源的数值有没有登记台账
+npm run check:reference   # 抄来的数值有没有台账；按配方估算的能不能重算回去
 npm test                  # 营养层与数据层语义对吗（无数据≠0、快照、数字只能来自一次乘法）
+npm run check:chunks      # 页面分包（食物库只许进 diet / index / takeout）—— ⚠️ 必须先构建
 ```
 
 **基线是 0 错 0 警。** 项目当前没有"预期内"的报错，所以任何报错都值得看一眼。
@@ -384,7 +385,9 @@ curl -s "https://orang1ver.github.io/yuanqi-ledger/sw.js?cb=$(date +%s)" | grep 
 | **食物库（223 条，按每 100g/ml）** | `data/foods.zh.json` |
 | **份量换算规则（113 条）** | `data/foodPortions.json` |
 | **数值引用台账（出处，不存数值）** | `data/foodSources.json` |
+| **成品菜配方（按配方估算的条目必须有它，且要能重算回去）** | `data/foodRecipes.json` |
 | **引用台账闸门** | `scripts/check-food-reference.mjs` |
+| **页面分包闸门（食物库只进该进的页面）** | `scripts/check-page-chunks.mjs`（`npm run check:chunks`，需先构建） |
 | **营养纯函数核心** | `lib/nutrition/core.ts` |
 | **查库与检索** | `lib/nutrition/library.ts` |
 | **口语份量解析** | `lib/nutrition/parse.ts` |

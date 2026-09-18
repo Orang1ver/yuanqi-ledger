@@ -17,6 +17,15 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.8.0",
+    date: "2026-09-19",
+    highlights: [
+      "加了 6 道常见外卖：麻辣烫、卤肉饭、烤肉饭、重庆小面、炒米粉、甘梅地瓜条",
+      "小笼包、炸鸡排、热狗肠这些也能算了 —— 它们和库里已有的东西是同一类，直接对上",
+      "成品菜的营养是按配方加出来的，配方也存进了仓库，能一条条复核",
+    ],
+  },
+  {
     version: "0.7.3",
     date: "2026-09-18",
     highlights: [

@@ -1,6 +1,6 @@
 {
   "name": "yuanqi-ledger",
-  "version": "0.7.3",
+  "version": "0.8.0",
   "private": true,
   "description": "元气账本 —— 记录吃、喝、动、睡的个人健康账本",
   "scripts": {
@@ -11,6 +11,7 @@
     "check:data": "node scripts/run-ts.mjs scripts/check-data-continuity.ts",
     "check:nutrition": "node scripts/check-nutrition.mjs",
     "check:reference": "node scripts/check-food-reference.mjs",
+    "check:chunks": "node scripts/check-page-chunks.mjs",
     "test": "node scripts/run-ts.mjs lib/nutrition/core.test.ts lib/nutrition/analysis.test.ts lib/nutrition/menu.test.ts lib/nutrition/recommend.test.ts lib/ai/recommend.test.ts lib/storage/diet.test.ts lib/storage/backupReminder.test.ts lib/mealPresets.test.ts lib/wellness.test.ts lib/weight.test.ts --test",
     "probe": "node scripts/run-ts.mjs scripts/nutrition-probe.ts --",
     "preview": "node scripts/preview.mjs",
