@@ -68,13 +68,30 @@ GIT_TERMINAL_PROMPT=0 git -C "$REPO" push origin main
 
 > 若报 `Could not resolve host: github.com`：用户机器上的 Steam++（Watt Toolkit）
 > 没在运行。它一退出就会还原 hosts，导致 github.com 走被污染的国内 DNS 而解析失败。
-> **这不是代码问题**，让用户打开 Steam++ 即可，说明清楚后等恢复再推。
+> **这不是代码问题。** 两条路：
+>
+> 1. **让用户打开 Steam++**（最省事）。
+> 2. **不想打断用户时，让 git 自己按 IP 解析。** 注意此时**只有域名解析挂了，链路是通的** ——
+>    `curl --resolve github.com:443:140.82.112.3 https://github.com` 返回 200 就是证据
+>    （`github.io`、`objects.githubusercontent.com` 的解析本来就是正常的）：
+>
+>    ```bash
+>    git -c http.curloptResolve=github.com:443:140.82.112.3 \
+>      ls-remote https://github.com/Orang1ver/yuanqi-ledger.git -h refs/heads/main
+>    ```
+>
+>    **这条路走的是 GitHub 的真实证书，比 `sslVerify=false` 干净得多，优先用它。**
+>    需要 git ≥ 2.36（本机 2.55 可用）。发布脚本也认：
+>    `DEPLOY_GIT_CONFIG="-c http.curloptResolve=github.com:443:140.82.112.3" node scripts/deploy.mjs`
 
 发布静态站点用一键脚本（会校验版本三处一致、注入 SW 缓存名并打 tag）：
 
 ```bash
 cd "$REPO" && node scripts/deploy.mjs
 ```
+
+⚠️ **构建必须在沙箱外跑**：Next.js 清理旧 `.next`（数千个文件）会撞上批量删除保护，
+报 `[safe-delete][SAFE_DELETE_BULK_CONFIRM_REQUIRED]` —— 与代码无关，别去改构建配置。
 
 ### ⚠️ TLS：schannel 吊销检查会让 git 全挂（2026-09-18 实测）
 
@@ -93,12 +110,21 @@ CRYPT_E_NO_REVOCATION_CHECK (0x80092012) - 吊销功能无法检查证书是否�
 - `curl` 到 `https://github.com` 返回 **HTTP 200** ⇒ **链路是通的**，只是 git 的 TLS 栈不认
 - `git ls-remote` 到**别的站点**（如 gitee）正常 ⇒ 不是 git 坏了，是 github.com 这条链特有问题
 
-**处置**（推代码时用，不改全局配置）：
+**处置**（按优先级试，两种都**不改全局配置**）：
 
-```bash
-git -c credential.helper= -c http.sslVerify=false push \
-  "https://${USER}:${TOKEN}@github.com/Orang1ver/yuanqi-ledger.git" <ref>
-```
+1. **先试按 IP 直连** —— 让 git 绕开反代，直接对 GitHub 真机握真证书，不牺牲任何校验：
+
+   ```bash
+   git -c http.curloptResolve=github.com:443:140.82.112.3 push \
+     "https://${USER}:${TOKEN}@github.com/Orang1ver/yuanqi-ledger.git" <ref>
+   ```
+
+2. 若仍报同样的错，再退到关校验：
+
+   ```bash
+   git -c credential.helper= -c http.sslVerify=false push \
+     "https://${USER}:${TOKEN}@github.com/Orang1ver/yuanqi-ledger.git" <ref>
+   ```
 
 - `credential.helper=` 是为了绕开"git 拉不起凭据助手"的老问题（见下）
 - `http.sslVerify=false` **只在这一次调用里生效**，不写进任何配置文件。

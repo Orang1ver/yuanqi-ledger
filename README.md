@@ -61,6 +61,10 @@ MSYS_NO_PATHCONV=1 BASE_PATH=/yuanqi-ledger npm run build     # 产物在 out/
 node scripts/deploy.mjs
 ```
 
+> 本机连不上 github.com（DNS 被挡、需靠 hosts 重定向时），用两个环境变量把差异带进来，
+> 不动仓库配置：`DEPLOY_REMOTE_URL`（远端 URL，可含凭据）、
+> `DEPLOY_GIT_CONFIG`（空格分隔的 `-c key=value`）。详见 `scripts/deploy.mjs` 头部注释。
+
 ### 部署到子路径后的自检
 
 只测路由地址是不够的 —— 曾经因为原生 `<a>` 漏了 `basePath`，直接访问路由是 200、
