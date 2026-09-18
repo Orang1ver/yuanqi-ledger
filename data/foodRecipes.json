@@ -77,6 +77,65 @@
         { "foodId": "zhiwuyou", "grams": 20 },
         { "foodId": "baitang", "grams": 10 }
       ]
+    },
+    {
+      "foodId": "zhajipai",
+      "yieldG": 120,
+      "note": "鸡胸肉裹粉油炸；吸油按 15g 算",
+      "parts": [
+        { "foodId": "jixiongrou", "grams": 100 },
+        { "foodId": "xiaomai-fen", "grams": 20 },
+        { "foodId": "yumi-dianfen", "grams": 8 },
+        { "foodId": "zhiwuyou", "grams": 15 },
+        { "foodId": "yan", "grams": 1 }
+      ]
+    },
+    {
+      "foodId": "kaolengmian",
+      "yieldG": 163,
+      "note": "冷面片按面粉算；一份含一个蛋和一根肠",
+      "parts": [
+        { "foodId": "xiaomai-fen", "grams": 60 },
+        { "foodId": "jidan-zhu", "grams": 50 },
+        { "foodId": "huotuichang", "grams": 30 },
+        { "foodId": "zhiwuyou", "grams": 10 },
+        { "foodId": "tianmianjiang", "grams": 10 },
+        { "foodId": "baitang", "grams": 3 }
+      ]
+    },
+    {
+      "foodId": "xiaolongbao",
+      "yieldG": 200,
+      "note": "馅用「里脊 + 五花」凑肥瘦比，比纯五花更接近实际做法；一笼 8 个约 200g",
+      "parts": [
+        { "foodId": "xiaomai-fen", "grams": 100 },
+        { "foodId": "zhuliji", "grams": 40 },
+        { "foodId": "wuhua-rou", "grams": 20 },
+        { "foodId": "jiangyou", "grams": 8 },
+        { "foodId": "zhiwuyou", "grams": 5 }
+      ]
+    },
+    {
+      "foodId": "zhujiaofan",
+      "yieldG": 355,
+      "note": "含米饭；猪脚按卤好的熟重算",
+      "parts": [
+        { "foodId": "rice-cooked", "grams": 200 },
+        { "foodId": "zhuti-shu", "grams": 120 },
+        { "foodId": "xiaobaicai", "grams": 30 },
+        { "foodId": "jiangyou", "grams": 5 }
+      ]
+    },
+    {
+      "foodId": "kaoyafan",
+      "yieldG": 313,
+      "note": "含米饭；烤鸭按带皮肉算",
+      "parts": [
+        { "foodId": "rice-cooked", "grams": 200 },
+        { "foodId": "kaoya", "grams": 80 },
+        { "foodId": "xiaobaicai", "grams": 30 },
+        { "foodId": "zhiwuyou", "grams": 3 }
+      ]
     }
   ]
 }

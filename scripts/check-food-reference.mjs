@@ -13,7 +13,8 @@
  *     ⚠️ **台账只记引用标识，不复制表格数值。** 两个理由：
  *       1) 版权：把《中国食物成分表》的表格数值整体复制进一个 MIT 仓库，是另一回事；
  *       2) 仓库里 `check-nutrition.mjs` 开头就写了「参照集不进仓库」的既有约定。
- *       要核对就拿着 `page` 回官网按编号查 —— 这才是"可复核"。
+ *       要核对就拿着 `code` 走查询接口（接口地址与字段含义写在 foodSources.json 的 meta.note 里）
+ *       —— 这才是"可复核"。⚠️ 别写成"回官网按编号查"：官网 UI 上没有那个入口。
  *
  *  B) **算出来的**（source 标了「按配方估算」）→ 必须有配方，而且要**重算得回去**。
  *     这类数值本来最容易变成"没人说得清怎么来的"：写个差不多的数、标一句"估算"就完了。
@@ -124,7 +125,7 @@ for (const [i, e] of (SOURCES.entries ?? []).entries()) {
     continue;
   }
   if (!byId.has(e.foodId)) fail(at, "库里没有这个 food id —— 台账指向了一条不存在的食物");
-  if (!Number.isInteger(e.page) || e.page <= 0) fail(at, `page 必须是正整数，实际 ${JSON.stringify(e.page)}`);
+  if (!Number.isInteger(e.code) || e.code <= 0) fail(at, `code 必须是正整数，实际 ${JSON.stringify(e.code)}`);
   if (!e.retrieved) fail(at, "缺 retrieved —— 台账要记清是什么时候取的");
   if (registered.has(e.foodId)) fail(at, "foodId 重复登记");
   registered.add(e.foodId);
@@ -269,7 +270,7 @@ function report() {
   if (!problems.length) {
     console.log("\n✓ 没发现问题。");
     console.log("  注意：本闸门保证的是「抄来的有据可查」+「算出来的重算得回去」，**证明不了数值对不对** ——");
-    console.log("  台账存的是引用标识而不是数值，要核对请拿 page 回官网按编号查；");
+    console.log("  台账存的是引用标识而不是数值，要核对请拿 code 走查询接口（见 foodSources.json 的 meta.note）；");
     console.log("  配方的可靠性锚在原料上，原料错了它跟着错。");
     console.log("=".repeat(72));
     return 0;

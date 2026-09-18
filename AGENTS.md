@@ -313,6 +313,16 @@ CRYPT_E_NO_REVOCATION_CHECK (0x80092012) - 吊销功能无法检查证书是否�
     同一天取回原文件时还撞到 `git checkout -- <file>` 被安全策略拦下（丢弃工作区改动属高危），
     改用 `git show HEAD:<file>` 读回内容再写 —— 效果一样，且不会误伤工作区里其它改动。
 
+28. **`.mjs` 文件里不要写 TypeScript 语法**（2026-09-19，一次会话里犯了**三次**）。
+    一次性脚本写顺手了就会带出 `const X: [string, number][] = [...]`、`x!.toFixed()` 这类写法，
+    而 `.mjs` 是**纯 JS** —— Node 直接报 `SyntaxError: Missing initializer in const declaration`。
+    坑在于 **eslint 不一定报**（`scripts/` 常在 lint 范围的边缘），
+    所以它要到那条命令真的跑起来才暴露，而那时你可能已经基于"改完了"往下做了。
+    数据文件的一次性改动脚本尤其容易这样 —— 同一段模板被反复复制粘贴。
+    **做法**：写 `scripts/tmp-*.mjs` 之前先问一句「这是 JS 还是 TS」；
+    需要类型就写 `.ts` 并用 `scripts/run-ts.mjs` 跑。
+    要进仓库的脚本（如 `scripts/fetch-food-table.mjs`）更要在提交前跑一次。
+
 ---
 
 ## 5. 验证要求（用户要求讲清"怎么验证的"）
@@ -385,9 +395,10 @@ curl -s "https://orang1ver.github.io/yuanqi-ledger/sw.js?cb=$(date +%s)" | grep 
 | 周维度达标率 | `lib/weekly.ts` |
 | **睡眠与心情的周聚合** | `lib/wellness.ts` |
 | 体重计算（周均、距健康区间） | `lib/weight.ts` |
-| **食物库（223 条，按每 100g/ml）** | `data/foods.zh.json` |
-| **份量换算规则（113 条）** | `data/foodPortions.json` |
+| **食物库（239 条，按每 100g/ml）** | `data/foods.zh.json` |
+| **份量换算规则（124 条）** | `data/foodPortions.json` |
 | **数值引用台账（出处，不存数值）** | `data/foodSources.json` |
+| **取数工具（联网，不进闸门链；台账里的 code 靠它核对）** | `scripts/fetch-food-table.mjs` |
 | **成品菜配方（按配方估算的条目必须有它，且要能重算回去）** | `data/foodRecipes.json` |
 | **引用台账闸门** | `scripts/check-food-reference.mjs` |
 | **页面分包闸门（食物库只进该进的页面）** | `scripts/check-page-chunks.mjs`（`npm run check:chunks`，需先构建） |

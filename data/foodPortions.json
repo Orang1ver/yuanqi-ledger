@@ -131,8 +131,26 @@
       { "label": "一盘", "grams": 250, "range": [150, 400], "isDefault": true, "note": "餐馆一盘菜的量，按可食部分算" }
     ] },
 
+    { "unit": "份", "match": ["小麦面粉", "小麦粉", "面粉"], "portions": [
+      { "label": "一份", "grams": 50, "range": [30, 100], "isDefault": true, "note": "做面食的一份，约 50g 干粉" }
+    ] },
+    { "unit": "份", "match": ["玉米淀粉", "淀粉", "生粉", "粟粉"], "portions": [
+      { "label": "一份", "grams": 15, "range": [5, 40], "isDefault": true, "note": "勾芡或裹粉用的一份，约 15g" }
+    ] },
+    { "unit": "份", "match": ["北京烤鸭", "烤鸭", "片皮鸭"], "portions": [
+      { "label": "一份", "grams": 150, "range": [80, 250], "isDefault": true, "note": "按带皮鸭肉算，一份约 150g" }
+    ] },
     { "unit": "份", "match": ["卤肉饭", "烤肉饭", "盖饭", "盖浇饭", "拌饭"], "portions": [
       { "label": "一份", "grams": 300, "range": [250, 400], "isDefault": true, "note": "含米饭，按一份 300g 成品算" }
+    ] },
+    { "unit": "份", "match": ["猪脚饭", "烤鸭饭"], "portions": [
+      { "label": "一份", "grams": 330, "range": [280, 400], "isDefault": true, "note": "含米饭的盖饭，一份约 330g" }
+    ] },
+    { "unit": "份", "match": ["烤冷面"], "portions": [
+      { "label": "一份", "grams": 163, "range": [120, 220], "isDefault": true, "note": "一张冷面加蛋加肠" }
+    ] },
+    { "unit": "份", "match": ["小笼包", "小笼汤包", "汤包"], "portions": [
+      { "label": "一份", "grams": 200, "range": [120, 300], "isDefault": true, "note": "一笼 8 个约 200g" }
     ] },
     { "unit": "份", "match": ["麻辣烫", "冒菜"], "portions": [
       { "label": "一份", "grams": 500, "range": [350, 700], "isDefault": true, "note": "含汤水；汤别喝光的话盐会少一截" }

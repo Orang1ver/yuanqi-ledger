@@ -17,6 +17,15 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.10.0",
+    date: "2026-09-19",
+    highlights: [
+      "补上了面粉、淀粉、五花肉、猪蹄、烤鸭 —— 之前裹粉和猪脚饭都算不了",
+      "新加了炸鸡排、烤冷面、小笼包、烤鸭饭、猪脚饭，炒河粉也能算了",
+      "数值来源台账写清了到底怎么核对（原来那句「回官网按编号查」是错的）",
+    ],
+  },
+  {
     version: "0.9.0",
     date: "2026-09-19",
     highlights: [
