@@ -519,7 +519,99 @@ async function checkMealPreset(page, baseUrl, failures) {
     failures.push(`「${r.target}」组刷新后红烧肉对不上（${t0} → ${t2}）—— 预设批量落库没被持久化`);
   }
   if (g2 !== g0) {
-    failures.push(`「${r.guess}」组凭空多了红烧肉（${g0} → ${g2}）—— 用户选的餐次被忽略`);
+    failures.push(`「${g.guess}」组凭空多了红烧肉（${g0} → ${g2}）—— 用户选的餐次被忽略`);
+  }
+}
+
+// ---------- 份量档位：点一下真的改了克数，而且改的是落库那个数 ----------
+
+/**
+ * 「记一笔」解析出的每条，克数旁有一排档位（「一包 · 70g」「大包 · 135g」）。
+ *
+ * 为什么要过一遍真实 DOM：解析层算的克数 → chips 的选项 → 点击后的 setState
+ * → 落库的 `grams`，中间任何一环把克数丢了，最后都表现成"点了没反应"或者
+ * "界面变了但存下去的还是旧值"。单测直接调 `resolveText` 是发现不了的。
+ *
+ * ⚠️ **必须先读默认克数、再点一个别的档位**（地雷 22）。
+ * 输入「一包薯片」时默认就是「一包 70g」；如果直接断言"点完是 70"，
+ * 那么在 `onPick` 压根没接上时这个检查**照样全绿**。
+ * 所以这里先读默认值，再刻意点「大包」——只有它真的变了才算过。
+ * 期望值从 chip 文本里解析（「大包 · 135g」→135），不写死数字，
+ * 免得以后调份量表时这里莫名其妙地红。
+ *
+ * 定位用 `aria-label="克数"`（读屏本来就要用的东西），不碰 class 名。
+ */
+async function checkPortionChip(page, baseUrl, failures) {
+  await goto(page, `${baseUrl}/diet/?portion=${Date.now()}`);
+
+  const r = await evaluate(
+    page,
+    `(async () => {
+      const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+      const btn = (text) => [...document.querySelectorAll("button")].find((b) => b.innerText.trim() === text);
+
+      const ta = [...document.querySelectorAll("textarea")].find((t) => (t.placeholder || "").includes("说一句就行"));
+      if (!ta) return { ok: false, why: "找不到「记一笔」的输入框" };
+      const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value").set;
+      setter.call(ta, "一包薯片");
+      ta.dispatchEvent(new Event("input", { bubbles: true }));
+      await sleep(80);
+
+      const parseBtn = [...document.querySelectorAll("button")].find((b) => b.innerText.includes("看看算成什么"));
+      if (!parseBtn) return { ok: false, why: "找不到「看看算成什么」按钮" };
+      parseBtn.click();
+      await sleep(320);
+
+      const gramsEl = () => document.querySelector('input[aria-label="克数"]');
+      if (!gramsEl()) return { ok: false, why: "解析结果里没有克数输入框（aria-label=克数）" };
+      const before = gramsEl().value;
+
+      const chips = [...document.querySelectorAll("button")].filter((b) => /·\\s*\\d+g$/.test(b.innerText.trim()));
+      if (!chips.length) return { ok: false, why: "克数旁没有出现份量档位", before };
+      const target = chips.find((b) => b.innerText.includes("大包"));
+      if (!target) return { ok: false, why: "档位里没有「大包」", chips: chips.map((b) => b.innerText.trim()), before };
+
+      const expected = Number((target.innerText.match(/(\\d+)g/) || [])[1]);
+      if (!expected) return { ok: false, why: "从档位文本里读不出克数：" + target.innerText, before };
+      if (String(expected) === before) {
+        return { ok: false, why: "要点的档位和默认克数一样（都是 " + before + "），测不出差别", before };
+      }
+
+      target.click();
+      await sleep(150);
+      const after = gramsEl().value;
+
+      const saveBtn = [...document.querySelectorAll("button")].find((b) => b.innerText.includes("记到") && b.innerText.includes("条"));
+      if (!saveBtn) return { ok: false, why: "找不到保存按钮", before, after, expected };
+      saveBtn.click();
+      await sleep(380);
+
+      const log = JSON.parse(localStorage.getItem("recipe.dietLog.v1") || "[]");
+      const hit = log.filter((e) => e && e.name === "薯片").sort((a, b) => b.createdAt - a.createdAt)[0];
+      return { ok: true, before, after, expected, saved: hit ? hit.grams : null, chip: target.innerText.trim() };
+    })()`,
+  );
+
+  if (!r.ok) {
+    failures.push(`份量档位：${r.why}`);
+    console.log(`✗ 份量档位检查没跑成：${r.why}`);
+    return;
+  }
+
+  const changed = r.after === String(r.expected) && r.after !== r.before;
+  const persisted = r.saved === r.expected;
+  const ok = changed && persisted;
+
+  console.log(
+    `${ok ? "✓" : "✗"} 点份量档位「${r.chip}」后克数 ${r.before} → ${r.after}（期望 ${r.expected}），` +
+      `落库 ${r.saved}g`,
+  );
+  if (!changed) {
+    failures.push(`点了「${r.chip}」但界面克数没跟着变（${r.before} → ${r.after}）—— 档位没接上克数那一格`);
+  } else if (!persisted) {
+    failures.push(
+      `界面显示 ${r.after}g，落库却是 ${r.saved}g —— 点档位改的只是显示，没进保存那一步`,
+    );
   }
 }
 
@@ -997,6 +1089,9 @@ try {
 
   // 这一条会真往账本里记一批「两菜一汤」，同样放在只读断言之后
   await checkMealPreset(page, BASE_URL, failures);
+
+  // 这一条会往账本里记一条薯片，同样放在只读断言之后
+  await checkPortionChip(page, BASE_URL, failures);
 
   // 这一条会**覆盖**菜单库与饮食记录（前置自己造），必须排在最后
   await checkAiPick(page, BASE_URL, failures);

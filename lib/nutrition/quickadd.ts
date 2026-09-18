@@ -271,17 +271,16 @@ export function resolveText(text: string, options?: { altLimit?: number }): Quic
     .filter((c) => c.cleaned.length > 0);
 }
 
-/** 该食物在某个量词下有哪些档位可选（界面用：小包 / 一包 / 大包） */
-export function portionOptions(food: FoodItem, unit: string): { label: string; grams: number }[] {
-  const rule = portionTable().rules.find(
-    (r) =>
-      r.unit === unit &&
-      r.match.some((m) => [food.name, ...(food.alias ?? [])].some((n) => n.includes(m))),
-  );
-  return rule ? rule.portions.map((p) => ({ label: p.label, grams: p.grams })) : [];
-}
-
-/** 某个食物主力量词下的档位 —— 用户改份量时不用先想到量词 */
+/**
+ * 某个食物有哪些档位可选（界面用：小包 / 一包 / 大包）。
+ *
+ * 刻意**只留这一个入口**：它跨所有量词（「一个苹果」和「一盘苹果」的档位一起给），
+ * 因为调用方（`PortionPicker` / `QuickAddCard`）手上只有"这个食物"，
+ * 而档位标签自己就带量词（「一包 · 70g」），用户看得懂，不需要我们先按量词筛一遍。
+ *
+ * ⚠️ 这里曾经还有第二个函数 `portionOptions(food, unit)`（限定量词），
+ * 但它**一个调用点都没有** —— 留着两套口径只会让人不知道该信哪个，已删。
+ */
 export function defaultPortionOptions(food: FoodItem): { unit: string; label: string; grams: number }[] {
   const names = [food.name, ...(food.alias ?? [])];
   return portionTable()

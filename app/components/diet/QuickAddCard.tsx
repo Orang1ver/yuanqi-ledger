@@ -34,6 +34,7 @@ import { MEAL_SLOTS } from "@/lib/tags";
 import type { MealSlot } from "@/lib/tags";
 import { frequentFoods, recordDietEntries, recordDietEntry } from "@/lib/storage";
 import { FoodSearchDialog } from "./FoodSearchDialog";
+import { PortionChips } from "./PortionChips";
 import type { PortionValue } from "./PortionPicker";
 
 type Row = {
@@ -335,6 +336,7 @@ export function QuickAddCard({ date }: { date: string }) {
                         className="yq-input"
                         type="number"
                         inputMode="decimal"
+                        aria-label="克数"
                         value={r.gramsText}
                         onChange={(e) => update(i, { gramsText: e.target.value })}
                         style={{ maxWidth: 96, minHeight: 36, fontSize: 14 }}
@@ -349,6 +351,19 @@ export function QuickAddCard({ date }: { date: string }) {
                           : "填个克数"}
                       </span>
                     </div>
+                    {/* 份量档位：点一下就把克数改成「大包 135g」这种常见量。
+                        ⚠️ 只改**克数**、不动 `unitLabel` —— 它是解析出来的量词（「包」），
+                        而 `portionCount` 要靠它把当前克数反算成「≈ N 个」；
+                        把它换成档位标签（「大包」）会让反算变成「≈ 1.9 大包」这种读数。 */}
+                    {defaultPortionOptions(r.food).length > 0 && (
+                      <div style={{ marginTop: 6 }}>
+                        <PortionChips
+                          options={defaultPortionOptions(r.food)}
+                          currentGrams={gramsOf(r)}
+                          onPick={(o) => update(i, { gramsText: String(o.grams) })}
+                        />
+                      </div>
+                    )}
                     <p className="yq-hint" style={{ marginTop: 2 }}>
                       {categoryLabel(r.food.category)} · 数值来源：{r.food.source}
                     </p>

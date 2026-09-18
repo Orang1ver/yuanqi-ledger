@@ -16,6 +16,7 @@ import { useState } from "react";
 import { nutritionOf } from "@/lib/nutrition/core";
 import { defaultPortionOptions } from "@/lib/nutrition/quickadd";
 import type { FoodItem } from "@/lib/nutrition/types";
+import { PortionChips } from "./PortionChips";
 
 export type PortionValue = { unitLabel: string; grams: number };
 
@@ -49,21 +50,12 @@ export function PortionPicker({
       {options.length > 0 ? (
         <>
           <p className="yq-label" style={{ marginBottom: 6 }}>常见的份量</p>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
-            {options.map((o) => {
-              const on = o.label === value.unitLabel && o.grams === value.grams;
-              return (
-                <button
-                  key={`${o.unit}-${o.label}-${o.grams}`}
-                  type="button"
-                  className="yq-chip"
-                  data-on={on}
-                  onClick={() => pick(o.unit, o.label, o.grams)}
-                >
-                  {o.label} · {o.grams}g
-                </button>
-              );
-            })}
+          <div style={{ marginBottom: 12 }}>
+            <PortionChips
+              options={options}
+              currentGrams={value.grams}
+              onPick={(o) => pick(o.unit, o.label, o.grams)}
+            />
           </div>
         </>
       ) : (

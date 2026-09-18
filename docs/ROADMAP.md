@@ -4,7 +4,7 @@
 > 每项带编号、目标、版本、改动文件、验收标准、依赖关系。
 > 红线与发布纪律见 `AGENTS.md`；AI 推荐外卖的细化方案见 `docs/HANDOFF-AI-RECOMMEND.md`。
 
-**当前版本：0.6.1** · 最后更新：2026-09-18
+**当前版本：0.6.2** · 最后更新：2026-09-18
 
 ---
 
@@ -52,18 +52,21 @@
 
 ---
 
-## 二、P5.3 份量档位点选 → 0.5.x / 0.6.0（PATCH 或 MINOR）
+## 二、✅ P5.3 份量档位点选 → **0.6.2（已完成）**
 
-> **现状关键发现**：档位点选 UI **已经存在**（`app/components/diet/PortionPicker.tsx`，含「小包/一包/大包」chip 组），但它**只接在「搜索添加」流程**（`FoodSearchDialog.tsx:64`）。缺的是把它接入 `QuickAddCard` 文本解析行的克数编辑处（现在是裸 `<input type="number">`）。
+> **当初的关键发现**：档位点选 UI **早就存在**（`PortionPicker` 的「小包 / 一包 / 大包」chip 组），
+> 但它**只接在「搜索添加」流程**里，而「记一笔」文本解析出的克数处仍是一个裸 `<input type="number">`。
+> 一个已经写好的能力，另一条路上用不到 —— 这类"已有能力没接上"的缺口，比缺功能更容易被忽略。
 
-- **目标**：文本解析出的每条记录，克数旁除手输外，还能点档位（小包/一包/大包）快速改克数。
-- **数据源**：现成 `defaultPortionOptions(food)`（跨量词）或死代码 `portionOptions(food, unit)`（限定量词）。
-- **改动**：
-  - `app/components/diet/QuickAddCard.tsx`：在克数 `<input>`（约 :333）旁，若 `defaultPortionOptions(r.food)` 非空则渲染档位 chips，点选 `update(i, { gramsText: String(grams), unitLabel })`。
-  - 复用 `PortionPicker` 的 chip 渲染逻辑（可抽成小组件，或直接内联）。
-- **注意**：`portionOptions(food, unit)` 目前是**死代码**（无调用点），接入后顺带激活它，或删掉避免误导。
-- **版本**：这是体验改进、非成块新功能 → PATCH（若顺带重构出共享组件可 MINOR，交给接手方判断）。
-- **验收**：冒烟「点档位改克数 → 落库克数正确」，自证会失败。
+- **落地**：
+  - 抽 `app/components/diet/PortionChips.tsx`（`options` / `currentGrams` / `onPick`），
+    `PortionPicker` 与 `QuickAddCard` **共用一份** —— 抄两份的话两边迟早长得不一样。
+  - `QuickAddCard` 克数旁接上档位；克数输入框补了 `aria-label="克数"`（读屏要用，冒烟也靠它定位，不碰 class）。
+  - ⚠️ **点档位只改克数、不改量词**：量词是解析出来的（「包」），
+    `portionCount` 靠它把当前克数反算成「≈ N 个」；换成档位标签「大包」会读成「≈ 1.9 大包」。
+  - **删掉死代码** `portionOptions(food, unit)`（grep 确认零调用点），只留 `defaultPortionOptions`。
+- **验收**：冒烟新增 `checkPortionChip` —— **先读默认克数、再刻意点一个不同的档位**
+  （地雷 22），断言界面与**落库**都变了（70 → 135g）。破坏 `onPick` 后确实变红。
 
 **依赖**：无。
 
@@ -289,6 +292,8 @@
 | **0.5.3** ✅ | 修连写切段（「一份饭两份肉一份包菜」，用户实测上报） | PATCH |
 | **0.6.0** ✅ | **P6.1 第一批**：新增 26 条基础食材 + 引用台账 + `check:reference` + 份量表联动校验 | MINOR |
 | **0.6.1** ✅ | 追加 13 条外卖快餐/小吃（真实菜单库驱动）+ 修「昨晚」丢份量 | PATCH |
+| **0.6.2** ✅ | **P5.3 完成**：份量档位接进「记一笔」（抽 `PortionChips` 共用 + 删死代码） | PATCH |
+| 0.7.0 | **P7 睡眠/心情/体重深化**（数据早就有，周报页一个板块都没有） | MINOR |
 | 0.6.x | **P6.1 第二/三批**（成品菜、回填 source）；P5.3 份量档位点选 | PATCH 或 MINOR |
 | 0.6.x | P6.2 条码（若数据源干净） | 视情况 |
 | 0.7.0 | P7 睡眠/心情/体重深化 | MINOR |
@@ -318,7 +323,7 @@
 BASE_PATH=/yuanqi-ledger npm run build   # 沙箱外
 npm test                  # 当前 163 条（含 mealPresets、AI 推荐、口语解析边界、食材与快餐）
 npm run check:data        # 数据层兼容（15 项）
-npm run smoke             # 真实 Edge 渲染 + 4 个定向交互检查（含「帮我挑」）
+npm run smoke             # 真实 Edge 渲染 + 5 个定向交互检查（餐次 / 一顿饭 / 份量档位 / 帮我挑）
 npm run check:nutrition   # 食物库质检（算术自洽 + 每条食物有没有份量规则）
 npm run check:reference   # 引用台账（标了外部来源的条目必须登记在册）
 python scripts/verify-subpath.py --base /yuanqi-ledger

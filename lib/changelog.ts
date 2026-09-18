@@ -17,6 +17,13 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.6.2",
+    date: "2026-09-18",
+    highlights: [
+      "「记一笔」解析出的每条，克数旁多了一排份量档位（小包 / 一包 / 大包），点一下就能改",
+    ],
+  },
+  {
     version: "0.6.1",
     date: "2026-09-18",
     highlights: [
