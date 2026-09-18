@@ -30,7 +30,7 @@ describe("菜单库 · 拆菜名里的食材", () => {
   });
 
   it("认不出来的食材不会硬凑一个上来", () => {
-    assert.deepEqual(splitDishIngredients("香辣鸡腿堡"), []);
+    assert.deepEqual(splitDishIngredients("本店秘制小食"), []);
   });
 });
 
@@ -89,7 +89,7 @@ describe("菜单库 · 估算的诚实边界", () => {
   });
 
   it("库里没有、又没关联 → 每一档都必须能说出理由", () => {
-    for (const name of ["香辣鸡腿堡", "牛肉拉面（小碗）", "蒸饺"]) {
+    for (const name of ["本店秘制小食", "牛肉拉面（小碗）", "蒸饺"]) {
       const m = estimateDish({ name });
       assert.equal(m.kind, "none", `${name} 不该给出数字`);
       assert.ok(m.basis.length > 0);
@@ -134,7 +134,7 @@ describe("菜单库 · 数字只能来自一次乘法", () => {
 
 describe("菜单库 · 汇总", () => {
   it("估不出来的菜单独计数，绝不当成 0 混进总数", () => {
-    const list = [estimateDish({ name: "清炒时蔬" }), estimateDish({ name: "香辣鸡腿堡" })];
+    const list = [estimateDish({ name: "清炒时蔬" }), estimateDish({ name: "本店秘制小食" })];
     const s = sumEstimates(list);
     assert.equal(s.known, 1);
     assert.equal(s.unknown, 1);
@@ -142,7 +142,7 @@ describe("菜单库 · 汇总", () => {
   });
 
   it("一条都估不出来时总量是 0，但 unknown 会说出来", () => {
-    const s = sumEstimates([estimateDish({ name: "香辣鸡腿堡" })]);
+    const s = sumEstimates([estimateDish({ name: "本店秘制小食" })]);
     assert.equal(s.known, 0);
     assert.equal(s.unknown, 1);
     assert.equal(s.loKcal, 0);

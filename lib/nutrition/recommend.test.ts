@@ -118,13 +118,13 @@ describe("推荐 · 算不出成分的菜不进池子", () => {
     const dish = {
       id: "d2",
       restaurant: "某店",
-      name: "香辣鸡腿堡",
+      name: "本店秘制小食",
       category: "西式快餐",
       flavorTags: [],
       avoidConflicts: [],
     };
     const out = suggestForGaps({ totals: sumNutrition(e), targets, menuDishes: [dish], limit: 500 });
-    assert.ok(!out.some((s) => s.label === "香辣鸡腿堡"));
+    assert.ok(!out.some((s) => s.label === "本店秘制小食"));
   });
 
   it("菜单来源的估算带上区间，不假装是个准数", () => {

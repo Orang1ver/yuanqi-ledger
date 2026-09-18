@@ -33,6 +33,19 @@
     { "foodId": "pinggu", "page": 581, "retrieved": "2026-09-18" },
     { "foodId": "xingbaogu", "page": 602, "retrieved": "2026-09-18" },
     { "foodId": "zhuliji", "page": 784, "retrieved": "2026-09-18" },
-    { "foodId": "jixiongrou", "page": 880, "retrieved": "2026-09-18" }
+    { "foodId": "jixiongrou", "page": 880, "retrieved": "2026-09-18" },
+    { "foodId": "hanbao-jirou", "page": 1251, "retrieved": "2026-09-18" },
+    { "foodId": "hanbao-jiliu", "page": 1249, "retrieved": "2026-09-18" },
+    { "foodId": "jirou-juan", "page": 1252, "retrieved": "2026-09-18" },
+    { "foodId": "jikuai", "page": 1253, "retrieved": "2026-09-18" },
+    { "foodId": "jichi-la", "page": 1254, "retrieved": "2026-09-18" },
+    { "foodId": "jichi-xinaorliang", "page": 1255, "retrieved": "2026-09-18" },
+    { "foodId": "jimihua", "page": 1256, "retrieved": "2026-09-18" },
+    { "foodId": "niangao", "page": 1211, "retrieved": "2026-09-18" },
+    { "foodId": "doufunao", "page": 1200, "retrieved": "2026-09-18" },
+    { "foodId": "liangfen", "page": 1206, "retrieved": "2026-09-18" },
+    { "foodId": "liangmian", "page": 1207, "retrieved": "2026-09-18" },
+    { "foodId": "reganmian", "page": 1213, "retrieved": "2026-09-18" },
+    { "foodId": "bisa", "page": 1259, "retrieved": "2026-09-18" }
   ]
 }

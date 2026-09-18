@@ -117,6 +117,9 @@
     { "unit": "碗", "match": ["饺子", "馄饨", "云吞"], "portions": [
       { "label": "一碗", "grams": 250, "range": [150, 350], "isDefault": true }
     ] },
+    { "unit": "碗", "match": ["豆腐脑", "豆花", "凉粉", "凉面", "热干面"], "portions": [
+      { "label": "一碗", "grams": 300, "range": [200, 450], "isDefault": true }
+    ] },
 
     { "unit": "盘", "match": ["时蔬", "青菜", "菜", "豆腐", "茄子", "豆角", "土豆丝", "西兰花", "地三鲜", "香锅", "海带丝", "木耳", "豆芽"], "portions": [
       { "label": "一盘", "grams": 250, "range": [150, 400], "isDefault": true }
@@ -163,6 +166,12 @@
     ] },
     { "unit": "份", "match": ["时蔬", "青菜", "菜", "豆腐", "茄子", "豆角", "土豆丝", "西兰花", "地三鲜", "香锅", "海带丝", "木耳", "豆芽"], "portions": [
       { "label": "一份", "grams": 200, "range": [120, 350], "isDefault": true, "note": "外卖一盒家常菜的量，按可食部估" }
+    ] },
+    { "unit": "份", "match": ["鸡米花"], "portions": [
+      { "label": "一份", "grams": 100, "range": [60, 150], "isDefault": true }
+    ] },
+    { "unit": "份", "match": ["年糕"], "portions": [
+      { "label": "一份", "grams": 150, "range": [80, 250], "isDefault": true, "note": "熟重" }
     ] },
 
     { "unit": "个", "match": ["蛋黄派", "面包", "蛋糕"], "portions": [
@@ -234,6 +243,12 @@
     { "unit": "个", "match": ["沙琪玛"], "portions": [
       { "label": "一个", "grams": 40, "range": [25, 60], "isDefault": true }
     ] },
+    { "unit": "个", "match": ["汉堡"], "portions": [
+      { "label": "一个", "grams": 200, "range": [150, 280], "isDefault": true, "note": "含面包胚与酱" }
+    ] },
+    { "unit": "个", "match": ["鸡肉卷"], "portions": [
+      { "label": "一个", "grams": 180, "range": [140, 230], "isDefault": true }
+    ] },
 
     { "unit": "根", "match": ["香蕉"], "portions": [
       { "label": "一根", "grams": 120, "range": [90, 180], "isDefault": true }
@@ -269,6 +284,9 @@
     { "unit": "只", "match": ["饺子"], "portions": [
       { "label": "一只", "grams": 20, "range": [15, 30], "isDefault": true, "note": "与「个」同口径，饺子说「只」和说「个」是一回事" }
     ] },
+    { "unit": "只", "match": ["鸡翅"], "portions": [
+      { "label": "一只", "grams": 60, "range": [40, 90], "isDefault": true, "note": "按可食部分估，含骨时更重" }
+    ] },
 
     { "unit": "片", "match": ["吐司", "面包"], "portions": [
       { "label": "一片", "grams": 35, "range": [25, 50], "isDefault": true }
@@ -297,6 +315,12 @@
     ] },
     { "unit": "块", "match": ["榴莲"], "portions": [
       { "label": "一块", "grams": 100, "range": [60, 200], "isDefault": true }
+    ] },
+    { "unit": "块", "match": ["鸡块"], "portions": [
+      { "label": "一块", "grams": 20, "range": [12, 30], "isDefault": true }
+    ] },
+    { "unit": "块", "match": ["比萨"], "portions": [
+      { "label": "一块", "grams": 100, "range": [70, 150], "isDefault": true, "note": "一角，整张约 6~8 角" }
     ] },
 
     { "unit": "勺", "match": ["油"], "portions": [

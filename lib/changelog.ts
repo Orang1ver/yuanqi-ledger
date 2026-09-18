@@ -17,6 +17,14 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.6.1",
+    date: "2026-09-18",
+    highlights: [
+      "点外卖常说的那几样现在能算了：一个汉堡 / 一份鸡米花 / 一份年糕 / 一碗热干面 / 一块比萨",
+      "修：「昨晚吃了一份年糕」不再丢掉份量（以前会走分类兜底并标成估算）",
+    ],
+  },
+  {
     version: "0.6.0",
     date: "2026-09-18",
     highlights: [

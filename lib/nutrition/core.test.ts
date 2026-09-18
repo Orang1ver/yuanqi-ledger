@@ -760,6 +760,29 @@ describe("常见口语不许因为缺别名就记不上", () => {
     // 「一份西兰花」以前会模糊配到「蒜蓉西兰花」（炒过的，多了油）
     assert.equal(resolveText("一份西兰花")[0].food?.name, "西兰花");
   });
+
+  it("外卖那几样也说得出克数了：汉堡 / 鸡米花 / 年糕 / 热干面 / 比萨", () => {
+    // 这一批同样取自官方数据（快餐、小吃类），点外卖时直接说就行
+    assert.equal(resolveText("一个汉堡")[0].food?.name, "鸡肉汉堡");
+    assert.equal(resolveText("一个汉堡")[0].grams, 200);
+    assert.equal(resolveText("一份鸡米花")[0].grams, 150);
+    assert.equal(resolveText("一份年糕")[0].grams, 150);
+    assert.equal(resolveText("一块比萨")[0].grams, 100);
+    assert.equal(resolveText("一碗热干面")[0].grams, 300);
+    assert.equal(resolveText("一个鸡肉卷")[0].food?.name, "鸡肉卷");
+  });
+
+  it("时间词「昨晚」「今早」要剥掉 —— 不然份量会跟着一起丢", () => {
+    // 回归：「昨晚」不在噪音表里时，「昨晚吃了一份年糕」整段被当作食物名去模糊检索 ——
+    // 配是配到了年糕，但**份量丢了**：走分类兜底 200g，还标成估算。
+    // 这种"看起来对、单位是错的"最难发现（地雷 19 的同类）。
+    const cs = resolveText("昨晚吃了一份年糕和一个汉堡");
+    assert.equal(cs.length, 2);
+    assert.equal(cs[0].food?.name, "年糕");
+    assert.equal(cs[0].grams, 150);
+    assert.equal(cs[0].estimated, false, "份量说清楚了就不该标成估算");
+    assert.equal(cs[1].food?.name, "鸡肉汉堡");
+  });
 });
 
 describe("三餐的参考分配", () => {
