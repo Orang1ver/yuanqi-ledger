@@ -485,6 +485,23 @@ describe("浅解析", () => {
     assert.deepEqual(splitFragments("苹果 香蕉"), ["苹果", "香蕉"]);
     assert.deepEqual(splitFragments("一包薯片 一杯奶茶"), ["一包薯片", "一杯奶茶"]);
   });
+
+  it("连写（不打标点）要按「数量+量词」切开：「一份饭两份肉一份包菜」", () => {
+    // 回归（2026-09-18 用户实测上报）：中文不习惯给每样东西都打标点。
+    // 整段进 parseFragment 的话，食物名会变成「饭两份肉一份包菜」，查库必然失败，
+    // 界面上只说一句「库里没有」—— 而用户明明把三样都说清楚了。
+    // 「一碗米饭一个鸡蛋」是同一类，而且更隐蔽：它只认得出米饭，**鸡蛋那份直接消失**。
+    assert.deepEqual(splitFragments("一份饭两份肉一份包菜"), ["一份饭", "两份肉", "一份包菜"]);
+    assert.deepEqual(splitFragments("一碗米饭一个鸡蛋"), ["一碗米饭", "一个鸡蛋"]);
+    assert.deepEqual(splitFragments("15个饺子两份肉"), ["15个饺子", "两份肉"]);
+    // 第一个数量词之前的内容留成一段（剥噪音后为空，会在 resolveText 那层被丢掉）
+    assert.deepEqual(splitFragments("我吃了一份饭两份肉"), ["我吃了", "一份饭", "两份肉"]);
+
+    // ⚠️ 只有**一份**时绝不能切，否则反而把食物名切坏（「三杯鸡」是个菜名）
+    assert.deepEqual(splitFragments("三杯鸡"), ["三杯鸡"]);
+    assert.deepEqual(splitFragments("一份包菜"), ["一份包菜"]);
+    assert.deepEqual(splitFragments("两个鸡蛋、一碗米饭"), ["两个鸡蛋", "一碗米饭"]);
+  });
 });
 
 describe("一句话记录 · 兜底不许算错", () => {
@@ -531,6 +548,22 @@ describe("一句话记录 · 兜底不许算错", () => {
     assert.equal(c.amount, 2);
     assert.equal(c.estimated, true, "约数没标估算，屏幕上就会出现一个看起来精确的 2");
     assert.match(c.basis, /约数/);
+  });
+
+  it("「一份饭两份肉一份包菜」拆成三条（曾经整段查库失败，三样全丢）", () => {
+    const cs = resolveText("一份饭两份肉一份包菜");
+    assert.equal(cs.length, 3);
+    assert.equal(cs[0].food?.name, "米饭");
+    // 「肉」是泛称、库里没有 —— 就该说"库里没有"并给相近项，不能硬配一条数值不对的
+    assert.equal(cs[1].name, "肉");
+    assert.equal(cs[1].missing, true);
+    assert.equal(cs[2].name, "包菜");
+    assert.equal(cs[2].missing, true);
+
+    // 「我吃了」那段剥掉噪音后是空的，不该变成一条记录
+    assert.equal(resolveText("我吃了一份饭两份肉").length, 2);
+    // 同一类里更隐蔽的一种：整段解析时「一个鸡蛋」会**直接消失**
+    assert.equal(resolveText("一碗米饭一个鸡蛋").length, 2);
   });
 
   it("「一包 70g 的薯片」记成薯片 70g（曾经记成肉包 200g）", () => {

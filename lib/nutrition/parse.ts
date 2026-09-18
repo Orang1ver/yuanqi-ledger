@@ -33,8 +33,12 @@
  *    而「15 个饺子」「饺子 15个」里的空白只是词间分隔，切了就错。
  *    前者的实测后果：第一条变成一条叫「5」的假食物（用户明明说的是 15 个饺子），
  *    第二条只剩「1 个饺子」。这两件事长在同一个位置，却要往相反的方向处理，
- *    所以规则一条条加在 `glueMeasures` 与 `mergeBareAmounts` 里，
+ *    所以规则一条条加在 `glueMeasures` / `mergeBareAmounts` / `splitByAmountUnit` 里，
  *    而**每加一条都要配一条"不该切/不该粘"的反例测试**（见 core.test.ts）。
+ *    最直白的一种是**连写**：中文不习惯给每样东西都打标点，
+ *    「一份饭两份肉一份包菜」整段进解析，食物名就成了「饭两份肉一份包菜」——
+ *    查库必然失败，界面上只说一句「库里没有」，而用户把三样都说清楚了。
+ *    判据要落在"出现了**几个**份量"上：两个以上才切，只有一个就切会把「三杯鸡」切坏。
  *
  * 5. **中文数量词不能用单字字符类匹配。** `[一二两三四五六七八九十半]` 匹配「十五」
  *    时只吃下「十」、剩下的「五」落进食物名 —— 实测把 15 个饺子算成 **10 份 2000g**。
@@ -256,13 +260,47 @@ function mergeBareAmounts(parts: string[]): string[] {
   return out;
 }
 
+/** 「数量 + 量词」作为一个整体，用来找出**一份一份**的边界 */
+const AMOUNT_UNIT_RE = new RegExp(`(?:${NUM}|${CN_NUM_WORD})[${UNIT_CLASS}]`, "g");
+
 /**
- * 按标点、空白与连接词切段（切之前先把被空白打散的份量粘回来）。
+ * 按「数量 + 量词」把一段拆成一份一份的。
  *
- * 三步，顺序不能换：
+ * 「一份饭两份肉一份包菜」这种连写是口语里最常见的形态之一 ——
+ * 中文不习惯给每样东西都打标点。整段进 `parseFragment` 的话，食物名会变成
+ * 「饭两份肉一份包菜」，查库必然失败，界面上只说一句「库里没有」，
+ * 而用户明明把三样都说清楚了。同样会丢东西的还有「一碗米饭一个鸡蛋」——
+ * 它只认得出米饭，鸡蛋那份直接消失。
+ *
+ * ⚠️ **至少要出现两个「数量+量词」才切**：「三杯鸡」「一份包菜」都只有一个，
+ * 切了反而把食物名切坏。判据是"有几份的边界"，不是"有没有出现量词"。
+ * 第一个数量词之前的内容（「我吃了」）单独留一段 —— 它剥掉噪音后是空的，
+ * 会在 `resolveText` 那层被丢掉，不会变成一条垃圾记录。
+ */
+function splitByAmountUnit(s: string): string[] {
+  const starts: number[] = [];
+  for (const m of s.matchAll(AMOUNT_UNIT_RE)) {
+    if (m.index !== undefined) starts.push(m.index);
+  }
+  if (starts.length < 2) return [s];
+
+  const out: string[] = [];
+  if (starts[0] > 0) out.push(s.slice(0, starts[0]));
+  for (let i = 0; i < starts.length; i += 1) {
+    out.push(s.slice(starts[i], i + 1 < starts.length ? starts[i + 1] : s.length));
+  }
+  return out.map((x) => x.trim()).filter(Boolean);
+}
+
+/**
+ * 按标点、空白、连接词与「数量+量词」切段（切之前先把被空白打散的份量粘回来）。
+ *
+ * 四步，顺序不能换：
  *   1) `glueMeasures` —— 先把「70 克」「15 个」这类**被空白打散的份量**粘回去；
  *   2) 连接词统一换成顿号 —— 之后就只用一套切分规则；
- *   3) 切完之后，把纯份量的段并回前一段（后置份量：「饺子 15个」）。
+ *   3) 按标点与空白切；
+ *   4) 每一段里再按「数量+量词」切（连写：「一份饭两份肉一份包菜」）。
+ * 最后把纯份量的段并回前一段（后置份量：「饺子 15个」）。
  */
 export function splitFragments(text: string): string[] {
   return mergeBareAmounts(
@@ -270,7 +308,8 @@ export function splitFragments(text: string): string[] {
       .replace(CONJUNCTION_RE, "$1、")
       .split(/[，,、;；\s]+/)
       .map((s) => s.trim())
-      .filter(Boolean),
+      .filter(Boolean)
+      .flatMap(splitByAmountUnit),
   );
 }
 

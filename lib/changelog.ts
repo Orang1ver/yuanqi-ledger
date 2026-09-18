@@ -17,6 +17,15 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.5.3",
+    date: "2026-09-18",
+    highlights: [
+      "「一份饭两份肉一份包菜」这种连写现在能拆成三条了（以前三样全认不出来）",
+      "修：「一碗米饭一个鸡蛋」不再把鸡蛋那一份丢掉",
+      "「肉」「包菜」这种库里真没有的，会明说「库里没有」并给相近的让你挑",
+    ],
+  },
+  {
     version: "0.5.2",
     date: "2026-09-18",
     highlights: [
