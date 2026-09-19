@@ -102,6 +102,8 @@
 4. **自证恢复成功**：`git count-objects -v`（`in-pack` 不为 0）、
    `git fsck --no-progress`（无 missing/broken）、`git log --oneline -3`
 
+完整的事故经过、根因分析与今后注意事项：**`docs/INCIDENT-2026-09-19-git-loss.md`**。
+
 ### 日常开发
 
 用户**平时就在用这个程序**，所以不要直接改他正在用的目录。
