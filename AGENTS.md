@@ -528,6 +528,9 @@ curl -s "https://orang1ver.github.io/yuanqi-ledger/sw.js?cb=$(date +%s)" | grep 
   发布时会把 `dist/yuanqi-ledger-<版本>.apk` 放到站点的 `/apk/` 下，
   并写一份 `version.json` 给「应用内更新」用（见地雷 38）。
   少了这一步，网页版照常能更新，但**安卓壳收不到更新提示** —— 脚本会警告，别忽略。
+- ⚠️ **在 worktree 里改过 `package.json`（加了依赖）之后，合并回主目录要先 `npm install`** ——
+  依赖没进主目录的 `node_modules` 时，`next build` 会**因为解析不到那个 import 而直接失败**
+  （动态 import 也一样会被解析）。worktree 有自己的 `node_modules`，不会自动同步。
 
 ---
 
