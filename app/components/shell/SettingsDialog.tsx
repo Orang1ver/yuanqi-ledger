@@ -18,6 +18,7 @@ import {
 } from "@/lib/storage/backup";
 import { describeBackupStatus, shouldRemindBackup } from "@/lib/storage/backupReminder";
 import { ImportPreview } from "./ImportPreview";
+import { AndroidApkSection } from "./AndroidApkSection";
 
 /**
  * 设置面板。
@@ -355,6 +356,8 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
             </div>
           )}
         </section>
+
+        <AndroidApkSection />
 
         <ChangelogSection />
 

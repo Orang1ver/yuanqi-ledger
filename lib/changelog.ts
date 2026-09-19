@@ -17,6 +17,14 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.1.1",
+    date: "2026-09-19",
+    highlights: [
+      "安卓手机上打开网页版时，设置里多了一条「安卓 App（安装包）」—— 以前第一次怎么装，界面上没有任何入口",
+      "那一条里写清了一件容易踩的事：装到桌面（PWA）和浏览器是同一份数据；装安装包（.apk）是另一个 App，数据要自己导过去",
+    ],
+  },
+  {
     version: "1.1.0",
     date: "2026-09-19",
     highlights: [

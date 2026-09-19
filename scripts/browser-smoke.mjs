@@ -1822,6 +1822,196 @@ async function checkAppUpdate(page, baseUrl, failures) {
   }
 }
 
+// ---------- 设置面板里的「安卓安装包」入口 ----------
+
+/**
+ * 网页版设置面板里那条「安卓 App（安装包）」入口。
+ *
+ * 它补的是一段**界面上的断头路**：应用内更新的「下载新版」只在**安卓壳里**出现，
+ * 而还没装壳的人恰恰看不到它 —— 于是"第一次怎么装"在界面上原本一个字都没有，
+ * 只能靠用户知道那个 `/apk/...` 地址。
+ *
+ * 三条断言正好对着这个组件的三条边界：
+ *  ① 安卓浏览器里**出现**，地址是拿 `version.json` 里的 `apk` 字段拼出来的；
+ *  ② iPhone 上**不出现**（`.apk` 在 iOS 上装了也打不开，摆出来是帮倒忙）；
+ *  ③ 壳里**不出现**（它自己就是那个包，让用户对着自己下载自己是荒谬的）。
+ *
+ * ⚠️ 喂的 `apk` 文件名故意**与版本号无关**（`9.9.9`）——
+ * 这样"地址是从 JSON 字段拼出来的"才算真的验到；文件名跟着版本号走的话，
+ * 把地址硬编码成 `${base}/apk/yuanqi-ledger-${version}.apk` 也照样全绿。
+ *
+ * ⚠️ 版本号喂的是**当前版本**：这一条平时就是在这个状态下出现的（没有待更新的横幅），
+ * 而且少一个"横幅也同时挂着"的干扰变量。
+ */
+async function checkAndroidApkEntry(page, baseUrl, failures) {
+  const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
+  const current = pkg.version;
+  const FAKE_APK = "apk/yuanqi-ledger-9.9.9.apk";
+
+  const ANDROID_UA =
+    "Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36";
+  const IPHONE_UA =
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1";
+
+  const ids = [];
+
+  async function installStub({ userAgent, native }) {
+    const source = `
+      (() => {
+        // 冒烟跑在桌面版 Edge 上，"这是不是安卓"必须自己造（地雷 18：前置不能靠假设）
+        Object.defineProperty(navigator, "userAgent", {
+          get: () => ${JSON.stringify(userAgent)},
+          configurable: true,
+        });
+        const realFetch = window.fetch.bind(window);
+        window.fetch = function (input, init) {
+          const url = typeof input === "string" ? input : (input && input.url) || "";
+          if (url.includes("version.json")) {
+            return Promise.resolve(new Response(JSON.stringify({
+              version: ${JSON.stringify(current)},
+              apk: ${JSON.stringify(FAKE_APK)},
+            }), { status: 200, headers: { "Content-Type": "application/json" } }));
+          }
+          return realFetch(input, init);
+        };
+        window.__yqOpened = [];
+        window.open = function (u) { window.__yqOpened.push(String(u)); return null; };
+        ${native ? "window.Capacitor = { isNativePlatform: () => true };" : ""}
+      })();
+    `;
+    const res = await page.send("Page.addScriptToEvaluateOnNewDocument", { source });
+    ids.push(res.identifier);
+  }
+
+  async function removeStubs() {
+    for (const id of ids.splice(0, ids.length)) {
+      try {
+        await page.send("Page.removeScriptToEvaluateOnNewDocument", { identifier: id });
+      } catch {
+        /* 清理失败不影响结果（地雷 17 的同一条道理） */
+      }
+    }
+  }
+
+  /** 开一个新文档 → 打开设置面板 → 看那个入口在不在，在了就点一下「下载」 */
+  async function readSection(tag) {
+    await goto(page, `${baseUrl}/?apk=${tag}-${Date.now()}`);
+    const opened = await openSettings(page);
+    if (!opened) return { opened: false, has: false };
+
+    let has = false;
+    // 入口要等一次网络请求（version.json）回来才渲染，不能拍脑袋 sleep 一个毫秒数
+    for (let i = 0; i < 25 && !has; i += 1) {
+      has = await evaluate(page, `!!document.querySelector('[data-yq="android-apk"]')`);
+      if (!has) await sleep(200);
+    }
+    if (!has) return { opened: true, has: false };
+
+    return {
+      opened: true,
+      has: true,
+      text: await evaluate(page, `document.querySelector('[data-yq="android-apk"]').innerText`),
+      clicked: await evaluate(
+        page,
+        `(async () => {
+          const b = document.querySelector('[data-yq="android-apk-download"]');
+          if (!b) return { ok: false };
+          b.click();
+          await new Promise((r) => setTimeout(r, 200));
+          return { ok: true, opened: window.__yqOpened || [] };
+        })()`,
+      ),
+    };
+  }
+
+  try {
+    // ---- ① 安卓浏览器：应当出现，且下载地址来自 version.json 的 apk 字段 ----
+    await installStub({ userAgent: ANDROID_UA, native: false });
+    const android = await readSection("android");
+    const url =
+      android.has && Array.isArray(android.clicked?.opened) ? android.clicked.opened[0] || "" : "";
+    const urlOk = url.includes(FAKE_APK);
+
+    // 顺手留一张图：这条入口的文案是写给人看的，review 时值得有一张能看的
+    // （设置面板很长，不滚到它那儿截出来的图里根本没有这一段）
+    if (android.has) {
+      await evaluate(
+        page,
+        `document.querySelector('[data-yq="android-apk"]').scrollIntoView({ block: "center" })`,
+      );
+      await sleep(150);
+      const shot = await page.send("Page.captureScreenshot", { format: "png" });
+      writeFileSync(join(OUT_DIR, "android-apk.png"), Buffer.from(shot.data, "base64"));
+    }
+
+    /*
+     * 两个按钮都要真的落在**可视区**里（尺寸非零，且整块在窗口右边界之内）。
+     * 一行里塞了按钮和一条长地址，方向对了但被挤到屏幕外**不会有任何报错**，
+     * 而用户看到的就是"少了一个按钮" —— 这类只靠眼睛看的东西最容易漏，所以用断言钉住。
+     *
+     * ⚠️ 这个判据**测不到父容器的 overflow 裁剪**：`getBoundingClientRect` 对裁剪一无所知，
+     * 它只能回答"在不在窗口坐标里"。要测裁剪得另找办法（例如拿父容器的 rect 比），
+     * 别把这个断言说成"按钮一定看得见"。
+     */
+    const buttons = android.has
+      ? await evaluate(
+          page,
+          `(() => {
+            const inView = (el) => {
+              if (!el) return false;
+              const r = el.getBoundingClientRect();
+              return r.width > 0 && r.height > 0 && r.left >= 0 && (r.right <= window.innerWidth + 1);
+            };
+            return {
+              download: inView(document.querySelector('[data-yq="android-apk-download"]')),
+              copy: inView(document.querySelector('[data-yq="android-apk-copy"]')),
+            };
+          })()`,
+        )
+      : { download: false, copy: false };
+
+    await removeStubs();
+
+    // ---- ② iPhone：不该出现 ----
+    await installStub({ userAgent: IPHONE_UA, native: false });
+    const iphone = await readSection("iphone");
+
+    await removeStubs();
+
+    // ---- ③ 壳里：不该出现 ----
+    await installStub({ userAgent: ANDROID_UA, native: true });
+    const shell = await readSection("shell");
+
+    const ok = android.has && urlOk && buttons.download && buttons.copy && !iphone.has && !shell.has;
+
+    console.log(
+      `${ok ? "✓" : "✗"} 安卓安装包入口：安卓浏览器里${android.has ? "出现" : "**没出现**"}` +
+        `、两个按钮都在可视区（下载=${buttons.download} / 复制链接=${buttons.copy}）` +
+        `、点「下载」打开的地址=${url || "（没打开）"}；iPhone 上${iphone.has ? "**出现了（不该出现）**" : "不出现"}；` +
+        `壳里${shell.has ? "**出现了（不该出现）**" : "不出现"}`,
+    );
+
+    if (!android.opened) failures.push("安卓安装包入口：安卓场景下打不开设置面板，检查没跑成");
+    else if (!android.has) {
+      failures.push("安卓浏览器里没有「安卓安装包」入口 —— 没装过 App 的人在界面上找不到安装包");
+    } else if (!urlOk) {
+      failures.push(
+        `安卓安装包入口点「下载」打开的地址不对：${url || "（没打开）"}（期望含 ${FAKE_APK}）`,
+      );
+    }
+    if (iphone.has) failures.push(`iPhone 上出现了「安卓安装包」入口：${iphone.text}`);
+    if (shell.has) failures.push(`安卓壳里出现了「安卓安装包」入口：${shell.text}`);
+    if (android.has && !buttons.download) {
+      failures.push("安卓安装包入口：点「下载」的按钮不在可视区里（被挤出屏幕或被父容器裁掉）");
+    }
+    if (android.has && !buttons.copy) {
+      failures.push("安卓安装包入口：「复制链接」按钮不在可视区里 —— 地址选不中也复制不了");
+    }
+  } finally {
+    await removeStubs();
+  }
+}
+
 // ---------- 按需拉起预览服务 ----------
 //
 // 冒烟测试依赖一个静态服务把 out/ 挂在子路径下。要求人先手动起服务，
@@ -2137,6 +2327,9 @@ try {
 
   // 这一条会 stub window.fetch / window.Capacitor（用完自己清掉），放最后免得影响别人
   await checkAppUpdate(page, BASE_URL, failures);
+
+  // 同上一类：stub fetch + 伪造 navigator.userAgent（用完自己清掉），也放最后
+  await checkAndroidApkEntry(page, BASE_URL, failures);
 
   if (failures.length) {
     console.log(`\n✗ ${failures.length} 个页面没显示出应有的内容（数据来源：${seedLabel}）：`);
