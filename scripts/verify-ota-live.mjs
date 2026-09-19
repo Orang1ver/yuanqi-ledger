@@ -92,7 +92,15 @@ try {
   if (!files.some((f) => f.path === "index.html")) fail("清单里没有 index.html —— 壳没有入口可加载");
   const entry = await (await fetch(at("index.html"), { cache: "no-store" })).text();
   if (!entry.includes("/_next/")) fail("产物的 index.html 里没有 /_next/ 引用 —— 产物不对");
-  if (prefix && entry.includes(`${prefix}/`)) {
+  // ⚠️ 判据要精确到"根相对引用"：产物里合法地带着
+  // `https://github.com/Orang1ver/yuanqi-ledger/issues/new`（反馈链接），
+  // 那里面也有 `/yuanqi-ledger/` —— 不能一刀切 includes。
+  const esc = prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  if (
+    prefix &&
+    (new RegExp(`(?<![A-Za-z0-9._@-])${esc}/`).test(entry) ||
+      new RegExp(`"(?:basePath|assetPrefix)":"${esc}"`).test(entry))
+  ) {
     fail(`产物的 index.html 里带着站点子路径前缀 ${prefix}/ —— 装进壳里会裸样式（CSS/JS 全 404）`);
   }
 

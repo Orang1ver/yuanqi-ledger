@@ -128,6 +128,23 @@ function assertRootBuild(dir, label) {
   const prefix = BASE_PATH.replace(/\/$/, "");
   if (!prefix) return; // 站点本身就部署在根时，这条判据没有意义
 
+  /*
+   * ⚠️ 判据要**精确到"根相对引用"**，不能简单 `includes(prefix + "/")`：
+   * 产物里合法地带着 `https://github.com/Orang1ver/yuanqi-ledger/issues/new`
+   * （反馈链接），那里面也有 `/yuanqi-ledger/` —— 一刀切会把正常产物判成坏的。
+   * （第一版就是这么写的，当场误报，见提交历史。）
+   *
+   * 真正危险的是这两种形态：
+   *   - 根相对引用：`href="/yuanqi-ledger/_next/…"`、`"/yuanqi-ledger/diet"`
+   *   - Next 运行时配置：`"basePath":"/yuanqi-ledger"`
+   * 前者用**负向后顾**把 GitHub 那种"前缀前面还接着域名"的地址排除掉。
+   */
+  const esc = prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const DANGER = [
+    new RegExp(`(?<![A-Za-z0-9._@-])${esc}/`),
+    new RegExp(`"(?:basePath|assetPrefix)":"${esc}"`),
+  ];
+
   const TEXT = /\.(html|txt|js|css|json|svg|webmanifest)$/;
   const hits = [];
   (function scan(d, base) {
@@ -139,7 +156,8 @@ function assertRootBuild(dir, label) {
         continue;
       }
       if (!TEXT.test(rel)) continue;
-      if (readFileSync(join(d, ent.name), "utf8").includes(`${prefix}/`)) hits.push(rel);
+      const text = readFileSync(join(d, ent.name), "utf8");
+      if (DANGER.some((re) => re.test(text))) hits.push(rel);
     }
   })(dir, "");
 
