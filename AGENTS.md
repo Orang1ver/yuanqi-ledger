@@ -482,6 +482,20 @@ CRYPT_E_NO_REVOCATION_CHECK (0x80092012) - 吊销功能无法检查证书是否�
     ⚠️ 冒烟里断言"多久收起"必须**跑在 4 秒兜底之前**（现在卡 3.2 秒）——
     等过了兜底再断言，BootSplash 坏掉也照样是 done，检查就假绿了。
 
+40. **「装到桌面」和「装 APK」是两种东西，数据一个相通一个不相通**（1.1.1 才写清）。
+    - **装到桌面（PWA）**：与浏览器**同一个存储**（同一个 Origin），装完数据无缝，只是多了个图标。
+    - **装 APK（Capacitor 壳）**：是**另一个 App** —— 壳里 Origin 是 `https://localhost`，
+      它的 localStorage 与浏览器里那份**完全是两套**。装完会发现"记录全没了"，
+      而数据其实好好地待在浏览器里。
+    ⇒ 所以设置面板那条安装包入口里必须**明写「先导出备份、装好再导入」**，别删那句话。
+    ⇒ 同理，任何"换个入口就能看到同一份数据"的假设在这里都不成立。
+    ⚠️ 顺带一条：**用户能看到的更新入口，对"还没装的人"是盲的** ——
+    「下载新版」只在壳里出现，于是第一次怎么装，界面上原本一个字都没有（1.1.1 补的
+    `AndroidApkSection`）。判断"某个入口够不够"时，要分别站在**已装**和**未装**两种身份上想一遍。
+    ⚠️ 那条入口的下载地址**从 `version.json` 的 `apk` 字段读**，不许硬编码版本号 ——
+    硬编码的话发下一版忘了改，就是一个点不动的 404。冒烟为此专门喂了一个
+    **与版本号无关**的文件名（`9.9.9`），否则"地址是拼出来的"这件事根本没被验到。
+
 ---
 
 ## 5. 验证要求（用户要求讲清"怎么验证的"）
@@ -497,7 +511,7 @@ python scripts/verify-subpath.py                                # 子路径点�
 
 ```bash
 npm run check:data        # 既有结构的数据还读得出来吗
-npm run smoke             # 真实浏览器里真的画出来了吗（5 个页面 + 15 个定向交互检查）
+npm run smoke             # 真实浏览器里真的画出来了吗（5 个页面 + 16 个定向交互检查）
 npm run check:nutrition   # 食物库算术自洽吗 + 每条食物有没有份量规则 + 具体规则有没有被泛化规则挡住
 npm run check:reference   # 抄来的数值有没有台账；按配方估算的能不能重算回去
 npm test                  # 营养层与数据层语义对吗（无数据≠0、快照、数字只能来自一次乘法）
@@ -555,6 +569,7 @@ curl -s "https://orang1ver.github.io/yuanqi-ledger/sw.js?cb=$(date +%s)" | grep 
 | 数据读写 | `lib/storage/`（`io.ts` 原语、`health.ts`/`meals.ts`/`takeout.ts` 领域、`backup.ts` 备份） |
 | **久未备份提醒（阈值 / 静默期 / 何时该提醒）** | `lib/storage/backupReminder.ts` |
 | **「装到桌面」提示（iOS 手动教 / 安卓调系统安装）** | `app/components/shell/IOSInstallHint.tsx`、`AndroidInstallHint.tsx` |
+| **安卓安装包下载入口（设置面板里，只对网页版 + 安卓显示）** | `app/components/shell/AndroidApkSection.tsx` |
 | **应用内更新（网页版清缓存 / 壳里下载安装包）** | `lib/update.ts`、`app/components/shell/UpdateBanner.tsx` |
 | **版本文件与安装包从哪来（发布时生成）** | `scripts/deploy.mjs` 的 `version.json` + `out/apk/` |
 | **启动动画（遮罩在服务端 HTML 里）** | `app/components/shell/BootSplash.tsx` + `app/layout.tsx` + `app/globals.css` |
