@@ -31,7 +31,8 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { copyFileSync, mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
+import { copyFileSync, mkdirSync, readdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -143,9 +144,61 @@ if (existsSync(apkSrc)) {
   );
 }
 
-const versionInfo = { version, build: buildId, site: SITE, apk: apkField, at: new Date().toISOString() };
+/*
+ * OTA 资源清单：安卓壳拿着它把站点产物下载到应用私有目录，再把 WebView 基址切过去，
+ * 于是不用换安装包就能用上新版本（实现见 docs/HANDOFF-OTA-UPDATE.md）。
+ *
+ * ⚠️ 只登记**壳真正要加载的界面资源**，三类东西必须排除：
+ *   - `version.json` —— 它是"问版本"用的接口，不属于界面资源
+ *   - `apk/**` —— 安装包是给系统装应用用的，几十 MB，绝不能进 OTA
+ *   - `sw.js` —— 壳里的 SW 会和 OTA 打架（见方案文档 §2.5），先不纳入
+ *   - 点开头的文件（`.nojekyll` 等）—— 那是给 GitHub Pages 看的
+ *
+ * ⚠️ sha256 一律**现算**，不要手写 —— 手写的校验值和文件对不上时，
+ * 表现是"下载每次都失败"，而且很难看出是清单的错还是文件的错。
+ *
+ * ⚠️ 这是**新增字段**：老 APK 只读 `version` 与 `apk`，加字段是安全的；
+ * 但既有字段一个都不能动。
+ */
+function collectOtaFiles(dir, base = "") {
+  const files = [];
+  for (const ent of readdirSync(dir, { withFileTypes: true })) {
+    if (ent.name.startsWith(".")) continue;
+    const rel = base ? `${base}/${ent.name}` : ent.name;
+    if (ent.isDirectory()) {
+      if (rel === "apk") continue;
+      files.push(...collectOtaFiles(join(dir, ent.name), rel));
+      continue;
+    }
+    if (rel === "version.json" || rel === "sw.js") continue;
+    const bytes = readFileSync(join(dir, ent.name));
+    files.push({
+      path: rel,
+      bytes: bytes.length,
+      sha256: createHash("sha256").update(bytes).digest("hex"),
+    });
+  }
+  return files;
+}
+
+const otaFiles = collectOtaFiles(OUT).sort((a, b) => (a.path < b.path ? -1 : 1));
+if (otaFiles.length === 0) {
+  console.error("✗ OTA 清单是空的 —— out/ 里没有可登记的资源，壳会拿到一份空清单");
+  process.exit(1);
+}
+const otaBytes = otaFiles.reduce((n, f) => n + f.bytes, 0);
+console.log(`▶ OTA 清单：${otaFiles.length} 个文件 / ${(otaBytes / 1048576).toFixed(2)}MB`);
+
+const versionInfo = {
+  version,
+  build: buildId,
+  site: SITE,
+  apk: apkField,
+  ota: { files: otaFiles },
+  at: new Date().toISOString(),
+};
 writeFileSync(join(OUT, "version.json"), JSON.stringify(versionInfo, null, 2) + "\n");
-console.log(`▶ version.json：${JSON.stringify(versionInfo)}`);
+console.log(`▶ version.json：version=${version} apk=${apkField} ota=${otaFiles.length} 个文件`);
 
 if (DRY) {
   console.log("\n✓ dry-run 完成，产物在 out/（未推送）");
