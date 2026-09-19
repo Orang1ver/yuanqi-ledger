@@ -412,6 +412,9 @@ export function fallbackGrams(food: Pick<FoodItem, "category">): number {
  *
  * `grams` 是唯一参与营养计算的值，所以这里由它反推 `amount` 与 `unitLabel` 的展示，
  * 而不是反过来用 `amount × 单位` 去算营养 —— 那份换算只在一个地方做。
+ *
+ * `dishId` 只是**透传**（来自菜单库的一道菜，见 `DietEntry.dishId` 的说明），
+ * 它不参与任何计算，也不影响快照 —— 加它不会让"数字只有一条来路"多出一个入口。
  */
 export function makeDietEntry(input: {
   id: string;
@@ -425,6 +428,7 @@ export function makeDietEntry(input: {
   unitLabel: string;
   grams: number;
   source: DietEntrySource;
+  dishId?: string;
 }): DietEntry {
   const { food, grams, ...rest } = input;
   const nutrition = food

@@ -41,6 +41,23 @@ export function addDays(dateISO: string, days: number): string {
   return formatDateISO(new Date(y, m - 1, d + days));
 }
 
+/**
+ * 两个日期相距几天（`to` 在 `from` 之后为正）。
+ *
+ * ⚠️ 刻意**不用 `addDays` 那种本地时间构造**：这里要的是"相隔几天"这个纯数字，
+ * 而本地时间在夏令时切换那天只有 23 小时或 25 小时 —— 按本地午夜相减会算出 0.958 天，
+ * 取整之后就成了差一天。`"2026-09-17"` 被 `Date.parse` 当成 **UTC 午夜**，
+ * 两端同一个基准，跨夏令时也恒等于整数天。
+ *
+ * 无法解析时返回 `NaN` —— 调用方必须自己处理，不要拿 NaN 去比大小（它会一路静默为 false）。
+ */
+export function daysBetween(fromISO: string, toISO: string): number {
+  const from = Date.parse(fromISO);
+  const to = Date.parse(toISO);
+  if (!Number.isFinite(from) || !Number.isFinite(to)) return NaN;
+  return Math.round((to - from) / 86_400_000);
+}
+
 /** 某天所在周的周一 */
 export function weekStartOf(dateISO: string): string {
   const [y, m, d] = partsOf(dateISO);

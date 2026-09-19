@@ -76,6 +76,11 @@ export type DietEntryInput = {
   unitLabel: string;
   grams: number;
   source: DietEntrySource;
+  /**
+   * 从菜单库的哪道菜记下来的。**可选**：
+   * 手输、口语解析、「一顿饭」预设都没有它，只有「今天吃什么」那条路会给。
+   */
+  dishId?: string;
 };
 
 /**
@@ -234,4 +239,34 @@ export function frequentFoods(limit = 8): { foodId: string; name: string; count:
     .map(([foodId, v]) => ({ foodId, name: v.name, count: v.count }))
     .sort((a, b) => b.count - a.count || (a.name < b.name ? -1 : 1))
     .slice(0, limit);
+}
+
+/**
+ * 「菜单库里的这道菜，我多久没吃了 / 吃过几次」。
+ *
+ * 只看带 `dishId` 的记录 —— 手输与口语解析的记录没有这个字段，
+ * 它们本来也指不到菜单库的哪一道菜上，硬按名字去猜只会猜错（同名菜在不同店都有）。
+ *
+ * ⚠️ **没有这个字段的老数据不算"吃过"**：1.2.0 之前的记录一条都没有，
+ * 如果把它们当成吃过，全库的菜会一夜之间变成"最近刚吃过"，推荐就废了。
+ *
+ * ⚠️ 一道菜如果展开成了多条（拆食材那种），`count` 会一次加多条。
+ * 调用的地方用它当"常点的程度"，所以这里**按天去重**：同一天同一道菜只算一次，
+ * 否则"吃过 3 次"可能只是同一顿饭里的三样食材。
+ */
+export function lastEatenByDish(): {
+  last: Map<string, string>;
+  count: Map<string, number>;
+} {
+  const last = new Map<string, string>();
+  const days = new Map<string, Set<string>>();
+  for (const e of loadDietEntries()) {
+    if (!e.dishId) continue;
+    const prev = last.get(e.dishId);
+    if (!prev || e.date > prev) last.set(e.dishId, e.date);
+    const seen = days.get(e.dishId);
+    if (seen) seen.add(e.date);
+    else days.set(e.dishId, new Set([e.date]));
+  }
+  return { last, count: new Map([...days].map(([id, set]) => [id, set.size])) };
 }

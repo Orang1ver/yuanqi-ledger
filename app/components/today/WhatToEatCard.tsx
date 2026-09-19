@@ -30,24 +30,13 @@ import { todayISO } from "@/lib/date";
 import { loadApiKeys } from "@/lib/prefs";
 import { loadHealthProfile } from "@/lib/storage/health";
 import { loadTakeoutDishes } from "@/lib/storage/takeout";
-import { AVOID_TAGS } from "@/lib/tags";
+import { avoidLabelsFromText } from "@/lib/tags";
 import type { TakeoutDish } from "@/lib/types";
 import { pickDishesForGaps, pickableDishes, type AiPick } from "@/lib/ai/recommend";
 import { estimateDish } from "@/lib/nutrition/menu";
 import { suggestForGaps, type Suggestion } from "@/lib/nutrition/recommend";
 import { PAGE_LABELS } from "@/lib/copy";
 import { useDayNutrition } from "../diet/useDayNutrition";
-
-/**
- * 结构化忌口只有「菜自己带的 avoidConflicts」，
- * 健康档案里的忌口是一段自由文本（「乳糖不耐」这种）。
- * 所以这里只认**逐字命中**的标签，不做同义词猜测 ——
- * 猜错了的后果是"该避的没避"，比不避更糟。
- */
-function verbatimAvoidLabels(text: string | undefined): string[] {
-  if (!text) return [];
-  return AVOID_TAGS.map((t) => t.label).filter((label) => text.includes(label));
-}
 
 /** 「帮我挑」这一小块自己的状态。放卡里，不往页面上提（见 AGENTS.md 地雷 7） */
 type AiState =
@@ -75,7 +64,9 @@ export function WhatToEatCard() {
   );
 
   const profile = loadHealthProfile();
-  const avoid = useMemo(() => verbatimAvoidLabels(profile?.allergies), [profile?.allergies]);
+  // 判据在 lib/tags.ts —— 「今天吃什么」那张卡用的是同一个函数，
+  // 两处各写一份的话，同一个人会在两张卡上得到两套忌口口径
+  const avoid = useMemo(() => avoidLabelsFromText(profile?.allergies), [profile?.allergies]);
 
   const suggestions: Suggestion[] = useMemo(
     () => suggestForGaps({ totals, targets, menuDishes: dishes, avoid, limit: 3 }),

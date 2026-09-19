@@ -1551,6 +1551,334 @@ async function checkAiPick(page, baseUrl, failures) {
   }
 }
 
+// ---------- 「今天吃什么」：从菜单库挑一道 ----------
+
+/**
+ * 首页那张「今天吃什么」。
+ *
+ * 它存在的全部理由是**别的推荐都要求"今天已经记过东西"**，
+ * 而"我现在要吃饭了，吃什么"恰恰是一条记录都没有的时刻 —— 所以第一条断言就是它。
+ *
+ * 前置**自己造**（地雷 18）：自己塞一份菜单库、一条两天前带 `dishId` 的记录、
+ * 一份带忌口的健康档案。样例数据里有没有这些一概不假设。
+ *
+ * ⚠️ 两道"能估出来"的菜是**手动关联到食物库**的（`foodId` + `grams`），
+ * 不靠"菜名拆得出来"——那样 fixture 会随着食物库的增删悄悄变成"估不出来"，
+ * 而这正是断言要盯的那件事。关联口径下 `estimateDish` 必定给一个确定的数，可以逐字比。
+ *
+ * ⚠️ 忌口用的是 `AVOID_TAGS` 里真有的「不吃香菜」。
+ * 写「乳糖不耐」这种自由文本是不会命中的（`avoidLabelsFromText` 只认逐字命中），
+ * 拿它当反例就等于在测一个永远不成立的条件。
+ */
+async function checkPickDish(page, baseUrl, failures) {
+  const KEY_DIET = "recipe.dietLog.v1";
+  const KEY_MENU = "recipe.takeoutMock.v2";
+  const KEY_PROFILE = "recipe.healthProfile.v1";
+  const KEY_SEEDED = "recipe.takeoutSeeded.v1";
+
+  const AVOID_LABEL = "不吃香菜";
+  /** 两道可估的（关联到真实食物）+ 一道撞忌口的 + 一道长套餐名（`estimateDish` 判 none） */
+  const DISH_A = {
+    id: "smoke-pd-1",
+    restaurant: "冒烟面馆",
+    name: "冒烟测试饭",
+    category: "冒烟一类",
+    foodId: "rice-cooked",
+    grams: 200,
+  };
+  const DISH_B = {
+    id: "smoke-pd-2",
+    restaurant: "冒烟饭馆",
+    name: "冒烟测试肉",
+    category: "冒烟二类",
+    foodId: "hongshaorou",
+    grams: 150,
+  };
+  /**
+   * 撞忌口的那道。
+   * ⚠️ 它与下面那道"估不出来"的菜**必须分开**：合在一起的话，
+   * 第 5 个场景（只放估不出来的那道）会先被忌口滤掉，卡片显示的是"没得挑"，
+   * 于是"估不出来的菜不给数字"这条断言测的是一个根本没渲染出来的东西。
+   * 第一版就是这么写错的，冒烟当场把它指了出来。
+   */
+  const DISH_AVOID = {
+    id: "smoke-pd-3",
+    restaurant: "冒烟烤肉",
+    name: "冒烟测试香菜牛肉",
+    category: "冒烟三类",
+    foodId: "hongshaorou",
+    grams: 120,
+    avoidConflicts: [AVOID_LABEL],
+  };
+  /** 长套餐名 —— `estimateDish` 认不全菜名，判 none（单元测试里也钉了同一条 fixture） */
+  const DISH_BLIND = {
+    id: "smoke-pd-4",
+    restaurant: "冒烟烧烤",
+    name: "箐筵荷叶烤鸡五香烤鸡整只",
+    category: "冒烟四类",
+  };
+
+  const menu = (list) =>
+    list.map((d) => ({ flavorTags: [], avoidConflicts: [], ...d }));
+
+  /** 前置：菜单库 + 饮食记录 + 带忌口的档案。`dietRows` 传进来是为了让"刚吃过"可复现 */
+  const seed = (dishes, dietRows) =>
+    `(() => {
+      localStorage.setItem(${JSON.stringify(KEY_MENU)}, JSON.stringify(${JSON.stringify(dishes)}));
+      localStorage.setItem(${JSON.stringify(KEY_SEEDED)}, "true");
+      localStorage.setItem(${JSON.stringify(KEY_DIET)}, JSON.stringify(${JSON.stringify(dietRows)}));
+      localStorage.setItem(${JSON.stringify(KEY_PROFILE)}, JSON.stringify({
+        sex: "男", age: 30, heightCm: 172, weightKg: 61.5, activityLevel: "久坐少动",
+        goal: "维持健康", allergies: ${JSON.stringify(AVOID_LABEL)}, conditions: "",
+        updatedAt: Date.now(),
+      }));
+      window.dispatchEvent(new Event("yq:data-changed"));
+    })()`;
+
+  /** 两天前的一条记录（带 dishId）—— "刚吃过"这个前置必须自己造 */
+  const twoDaysAgoRow = (dishId) =>
+    `(() => {
+      const d = new Date(Date.now() - 2 * 86400000);
+      const pad = (n) => (n < 10 ? "0" + n : String(n));
+      const date = d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+      return [{
+        id: "smoke-pd-old", date, time: "12:30", mealSlot: "午餐",
+        foodId: "rice-cooked", name: "冒烟测试饭", category: "staple",
+        amount: 1, unitLabel: "份", grams: 200,
+        nutrition: { kcal: 232, protein: 5, fat: 0.6, carb: 51 },
+        source: "db", createdAt: Date.now() - 2 * 86400000,
+        dishId: ${JSON.stringify(dishId)},
+      }];
+    })()`;
+
+  /** 卡里现在推的是哪一道（靠 data-yq 定位，不靠文案 —— 地雷 24） */
+  const NAME_SEL = `document.querySelector('[data-yq="pick-dish-name"]')`;
+  const CARD_SEL = `document.querySelector('[data-yq="pick-dish"]')`;
+
+  async function waitName() {
+    for (let i = 0; i < 25; i += 1) {
+      const t = await evaluate(page, `(() => { const el = ${NAME_SEL}; return el ? el.innerText : null; })()`);
+      if (t) return t;
+      await sleep(200);
+    }
+    return null;
+  }
+
+  /** 点若干次「换一个」，收集出现过的菜名 */
+  async function rerollNames(times) {
+    return evaluate(
+      page,
+      `(async () => {
+        const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+        const txt = () => { const el = ${NAME_SEL}; return el ? el.innerText : null; };
+        const seen = new Set([txt()]);
+        for (let i = 0; i < ${times}; i += 1) {
+          const b = document.querySelector('[data-yq="pick-dish-again"]');
+          if (!b) break;
+          b.click();
+          await sleep(45);
+          seen.add(txt());
+        }
+        return [...seen].filter(Boolean);
+      })()`,
+    );
+  }
+
+  /**
+   * 塞好前置**再重新装载**。
+   *
+   * ⚠️ 顺序很重要，第一版写成"先装载、再塞数据"就假红了一条：
+   * 「吃过什么」**只在装载与点「换一个」时读**（见 `PickDishCard` 里 `History` 的注释），
+   * 装载之后再塞进来的记录当场是看不见的。而真实场景里那条记录本来就在 localStorage 里躺着 ——
+   * 所以这里必须是 seed → 重新装载，才和用户遇到的情况一致。
+   */
+  async function remount(dishes, dietRows, tag) {
+    await evaluate(page, seed(dishes, dietRows));
+    await goto(page, `${baseUrl}/?pick-${tag}=${Date.now()}`);
+    return evaluate(page, `(() => { const el = ${CARD_SEL}; return el ? el.innerText : ""; })()`);
+  }
+
+  try {
+    await goto(page, `${baseUrl}/?pick=0`);
+
+    // ---- 1) 一条饮食记录都没有：照样要给出推荐；忌口那道从不出现；「换一个」真的会换 ----
+    await remount(menu([DISH_A, DISH_B, DISH_AVOID]), [], "a");
+    const noRecords = await waitName();
+    const hasSlot = await evaluate(
+      page,
+      `[...document.querySelectorAll('[data-yq="pick-dish"] button')].some((b) => b.innerText === "晚餐")`,
+    );
+    const names = await rerollNames(12);
+
+    // 顺手留一张图：这张卡的文案是写给人看的，review 时值得有一张能看的
+    // （页面截图 today.png 是**启动遮罩还盖着**的时候拍的，里面看不到内容）
+    {
+      await evaluate(
+        page,
+        `document.querySelector('[data-yq="pick-dish"]').scrollIntoView({ block: "start" })`,
+      );
+      await sleep(150);
+      const shot = await page.send("Page.captureScreenshot", { format: "png" });
+      writeFileSync(join(OUT_DIR, "pick-dish.png"), Buffer.from(shot.data, "base64"));
+    }
+
+    /*
+     * ---- 1b) 忌口：让撞忌口的那道**成为唯一候选项** ----
+     *
+     * ⚠️ 这一条是自证逼出来的。原来的写法是"换一个 12 次，撞忌口的那道不许出现在见过的名字里" ——
+     * 把忌口过滤整个删掉之后它**照样全绿**：3 道菜里随机 12 次没抽中那一道而已。
+     * 一条靠抽样去碰的断言等于没有断言（地雷 22/23：先问"这个改动真的会走到那条断言吗"）。
+     * 把候选项收成 1 道之后，过滤在不在就是**必然**结果：删掉过滤它一定被推出来。
+     */
+    const avoidedOnlyText = await remount(menu([DISH_AVOID]), [], "avoid");
+
+    // ---- 2) 两天前刚吃过 A：这次不该又是 A（软降权，不是硬排除）----
+    // `evaluate` 走 `returnByValue`，所以这里拿到的**已经是数组**，不要再 JSON.parse 一遍
+    const oldRows = await evaluate(page, twoDaysAgoRow(DISH_A.id));
+    await remount(menu([DISH_A, DISH_B]), oldRows, "b");
+    const afterEaten = await waitName();
+
+    // ---- 3)「就吃这个」：落库、都带 dishId、热量与屏幕上显示的那个数一致 ----
+    const ate = await evaluate(
+      page,
+      `(async () => {
+        const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+        const card = ${CARD_SEL};
+        const nameEl = ${NAME_SEL};
+        if (!card || !nameEl) return { ok: false, why: "卡片没渲染出来" };
+        const shownName = nameEl.innerText.replace(/\\s+/g, " ").trim();
+        /*
+         * ⚠️ 屏幕上的那段文字必须在**点之前**取。
+         * 第一版是在返回的对象字面量里现取 card.innerText —— 那是点完之后才求值的，
+         * 于是比的是"记完以后卡片上显示的下一道菜"，而记下的数是刚才那道。两条断言一起假红。
+         * （⚠️ 这段注释写在模板字符串里，所以不能用反引号 —— 用了会把模板提前闭合。）
+         */
+        const shownText = card.innerText;
+        /*
+         * ⚠️ 不能拿"之前有几条"当下标去切新增的那几条：
+         * recordDietEntries 写完会**整表按日期重排**，新记的这条会插到最前面，
+         * 于是 slice(before) 切到的是**原来那条旧记录**（第一版就这么错，报出来的是旧记录的 dishId）。
+         * 按 id 差集取才与排序无关。
+         */
+        const beforeRows = JSON.parse(localStorage.getItem(${JSON.stringify(KEY_DIET)}) || "[]");
+        const beforeIds = new Set(beforeRows.map((e) => e.id));
+        const btn = document.querySelector('[data-yq="pick-dish-eat"]');
+        if (!btn) return { ok: false, why: "没有「就吃这个」按钮", shownName };
+        btn.click();
+        await sleep(250);
+        const rows = JSON.parse(localStorage.getItem(${JSON.stringify(KEY_DIET)}) || "[]");
+        const added = rows.filter((e) => !beforeIds.has(e.id));
+        return {
+          ok: true,
+          shownName,
+          shownKcal: shownText,
+          added: added.length,
+          allHaveDishId: added.length > 0 && added.every((e) => typeof e.dishId === "string" && e.dishId),
+          dishIds: [...new Set(added.map((e) => e.dishId))],
+          kcal: added.reduce((a, e) => a + (e.nutrition ? e.nutrition.kcal : 0), 0),
+          toast: card.innerText.includes("已把"),
+        };
+      })()`,
+    );
+
+    // ---- 4) 菜单库空：明说库是空的，而不是装作没这回事 ----
+    const emptyText = await remount([], [], "empty");
+
+    // ---- 5) 唯一能挑的是"估不出来"那道：不给数字、不给记录按钮 ----
+    const blindText = await remount(menu([DISH_BLIND]), [], "blind");
+    const blindHasEat = await evaluate(page, `!!document.querySelector('[data-yq="pick-dish-eat"]')`);
+
+    /*
+     * 「记下的数 = 刚才屏幕上的数」。
+     * 两道 fixture 都是**关联过**的菜，所以屏幕上是一个确定的数（不是区间），可以逐字比。
+     */
+    const shownKcal = (() => {
+      const m = /(\d+) kcal/.exec(ate.shownKcal || "");
+      return m ? Number(m[1]) : null;
+    })();
+    /*
+     * ⚠️ 菜名后面紧跟的是商家标签，`innerText` 把它们**连成一串没有空格**
+     * （「冒烟测试肉冒烟饭馆」），所以不能 split 出第一个词去查表 —— 要用"以菜名开头"来认。
+     */
+    const ateId =
+      [DISH_A, DISH_B].find((d) => (ate.shownName || "").startsWith(d.name))?.id || null;
+
+    const containsAvoided = (s) => typeof s === "string" && s.includes(DISH_AVOID.name);
+    const results = [
+      {
+        name: "没有饮食记录时也给出推荐",
+        pass: Boolean(noRecords),
+        detail: noRecords || "（卡片没给出菜名）",
+      },
+      { name: "能选记到哪一餐", pass: hasSlot, detail: "" },
+      {
+        name: "忌口那道从不出现",
+        pass: !containsAvoided(noRecords) && !names.some(containsAvoided),
+        detail: names.filter(containsAvoided).join("/"),
+      },
+      {
+        name: "只剩忌口那道时也不推它",
+        pass: !containsAvoided(avoidedOnlyText) && avoidedOnlyText.includes("忌口"),
+        detail: (avoidedOnlyText || "").slice(0, 60),
+      },
+      {
+        name: "「换一个」真的会换",
+        pass: new Set(names).size >= 2,
+        detail: names.join(" / "),
+      },
+      {
+        name: "刚吃过的那道不再被推",
+        pass: typeof afterEaten === "string" && afterEaten.includes(DISH_B.name),
+        detail: String(afterEaten),
+      },
+      { name: "「就吃这个」落库了", pass: Boolean(ate.ok) && ate.added > 0, detail: ate.why || `${ate.added} 条` },
+      {
+        name: "落库的每条都带 dishId",
+        pass: Boolean(ate.allHaveDishId),
+        detail: `dishIds=${JSON.stringify(ate.dishIds || [])}`,
+      },
+      {
+        name: "落库的是屏幕上那道菜",
+        pass: Boolean(ateId) && Array.isArray(ate.dishIds) && ate.dishIds.length === 1 && ate.dishIds[0] === ateId,
+        detail: `屏上「${ate.shownName}」→ ${JSON.stringify(ate.dishIds || [])}`,
+      },
+      {
+        name: "记下的热量等于屏幕上那个数",
+        pass: shownKcal !== null && ate.kcal > 0 && Math.abs(ate.kcal - shownKcal) < 1,
+        detail: `落库 ${Math.round(ate.kcal || 0)} vs 屏幕 ${shownKcal}`,
+      },
+      { name: "记完有一句反馈", pass: Boolean(ate.toast), detail: "" },
+      {
+        name: "菜单库空时说清是空的",
+        pass: typeof emptyText === "string" && emptyText.includes("菜单库还是空的"),
+        detail: (emptyText || "").slice(0, 50),
+      },
+      {
+        name: "估不出来的菜不显示热量",
+        pass: typeof blindText === "string" && blindText.includes(DISH_BLIND.name) && !blindText.includes("kcal"),
+        detail: (blindText || "").slice(0, 60),
+      },
+      {
+        name: "估不出来的菜不给「就吃这个」",
+        pass: blindHasEat === false,
+        detail: `按钮=${blindHasEat}`,
+      },
+    ];
+
+    const bad = results.filter((r) => !r.pass);
+    console.log(
+      `${bad.length ? "✗" : "✓"} 今天吃什么（无饮食记录 / 忌口 1 道 / 刚吃过 1 道）：` +
+        results.map((r) => `${r.pass ? "" : "✗"}${r.name}`).join(" · "),
+    );
+    for (const r of bad) {
+      failures.push(`今天吃什么：${r.name}${r.detail ? `（${r.detail}）` : ""}`);
+    }
+  } finally {
+    // 恢复一份干净的菜单库，别把 fixture 留给后面的检查
+    await evaluate(page, seed([], [])).catch(() => {});
+  }
+}
+
 // ---------- 启动动画 ----------
 
 /**
@@ -2321,6 +2649,9 @@ try {
 
   // 这一条会**覆盖**菜单库与饮食记录（前置自己造），必须排在最后
   await checkAiPick(page, BASE_URL, failures);
+
+  // 同上一类：也覆写菜单库 + 饮食记录 + 健康档案，紧跟在它后面（跑完把菜单库清干净）
+  await checkPickDish(page, BASE_URL, failures);
 
   // 最后两条只重载 / 并动一个「更新提示」的开关，不碰任何用户数据
   await checkBootSplash(page, BASE_URL, failures);

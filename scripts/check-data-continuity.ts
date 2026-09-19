@@ -25,6 +25,10 @@ import { strict as assert } from "node:assert";
 // 免得两边各写一套、日子久了互相漂移。结构逐字照抄早期版本真实落库的形态。
 import legacy from "./fixtures/legacy-v1.json";
 
+// 类型是**编译期**的东西，`import type` 会被完全擦掉，
+// 所以它不影响下面"先挂 window 替身、再动态 import 数据层"的顺序。
+import type { DietEntry } from "../lib/nutrition/types";
+
 // ---------- 造一个最小可用的浏览器环境 ----------
 
 class MemoryStorage {
@@ -92,6 +96,7 @@ async function main() {
   const meals = await import("../lib/storage/meals");
   const takeout = await import("../lib/storage/takeout");
   const diet = await import("../lib/storage/diet");
+  const { KEYS } = await import("../lib/storage/keys");
   const { loadPrefs } = await import("../lib/prefs");
   const { normalizeRewards, calcCurrentStreak } = await import("../lib/rewards");
   const { calcDailyTargets } = await import("../lib/health");
@@ -207,6 +212,56 @@ async function main() {
     assert.equal(diet.entriesBetween("2026-09-01", "2026-09-30").length, 0);
     assert.equal(diet.frequentFoods().length, 0);
     return "键不存在 → 读出空表（升级用户首次进入就是这种情况）";
+  });
+
+  check("饮食日记 · 老记录没有 dishId（1.2.0 新增的可选字段）", () => {
+    /*
+     * `DietEntry.dishId` 是 1.2.0 加的：菜单库的一道菜记进饮食日记时带上它，
+     * 「今天吃什么」才能知道"最近吃过哪几道"。
+     *
+     * ⚠️ 这条断言守的是**加法式改动**的那条底线：老记录一条都没有这个字段，
+     * 而那是**正常且永久**的状态 —— 不许因为缺它就跳过记录，更不许顺手回填。
+     * 另外它还钉住一个很容易写错的地方：**没有这个字段的记录不算"吃过"**。
+     * 要是哪天把它当成吃过（比如用"库里有记录"当条件），全库的菜会一夜之间变成
+     * "最近刚吃过"，推荐当场失效 —— 而界面上完全看不出异常。
+     */
+    const now = "2026-09-17T12:00:00.000Z";
+    const old: DietEntry[] = [
+      {
+        id: "old-1",
+        date: "2026-09-17",
+        time: "12:00",
+        mealSlot: "午餐",
+        foodId: "rice-cooked",
+        name: "米饭",
+        category: "staple",
+        amount: 1,
+        unitLabel: "碗",
+        grams: 250,
+        nutrition: { kcal: 290, protein: 6.5, fat: 0.8, carb: 63.8 },
+        source: "db",
+        createdAt: Date.parse(now),
+      },
+    ];
+    localStorage.setItem(KEYS.dietLog, JSON.stringify(old));
+    const back = diet.loadDietEntries();
+    assert.equal(back.length, 1, "缺 dishId 的老记录必须照样读得出来");
+    assert.equal(back[0].dishId, undefined);
+
+    const { last, count } = diet.lastEatenByDish();
+    assert.equal(last.size, 0, "没有 dishId 的记录不该被算成「吃过某道菜」");
+    assert.equal(count.size, 0);
+
+    // 带 dishId 的新记录才算 —— 同一份数据里两种混着也要分得清
+    localStorage.setItem(
+      KEYS.dietLog,
+      JSON.stringify([...old, { ...old[0], id: "new-1", dishId: "dish-9" }]),
+    );
+    const mixed = diet.lastEatenByDish();
+    assert.equal(mixed.last.get("dish-9"), "2026-09-17");
+    assert.equal(mixed.count.get("dish-9"), 1, "同一天同一道菜只算一次（拆食材会落多条）");
+    assert.equal(mixed.last.size, 1, "只有带 dishId 的那一条进统计");
+    return "缺 dishId 的老记录读得出、也不算吃过；带 dishId 的才进「最近吃过」";
   });
 
   check("常用食材 / 偏好笔记 / 周分析", () => {
