@@ -650,6 +650,16 @@ CRYPT_E_NO_REVOCATION_CHECK (0x80092012) - 吊销功能无法检查证书是否�
     不回填、不报错、**也不算"吃过"**（把"库里有记录"当成吃过，全库的菜会一夜之间变成"最近刚吃过"）。
     相关自检在 `scripts/check-data-continuity.ts` 的「老记录没有 dishId」那一项。
 
+44. **本机 `npx` 的返回码不可信 —— 会把一次成功判成失败**（2026-09-19，发 1.3.3 时）。
+    `npx cap sync android` 在**同步完全成功之后**仍返回非 0（`@capacitor/cli` 自己的退出码是 0），
+    而 `build-apk.ps1` 拿 `$LASTEXITCODE` 判定失败并 `exit 1` —— APK 根本没打，日志里却每一步都成功。
+    **修法：别用 `npx` 这层包装，直接调 CLI** ——
+    `node node_modules/@capacitor/cli/bin/capacitor sync android`。
+    ⇒ 凡是用返回码做判定的地方，都别把 `npx` 当可信来源。
+    ⚠️ 同处原来只断言「壳里 `index.html` 存在」—— 那份文件**一直都在**，
+    根本抓不住脚本自己声明要防的第 2 条（忘了 cap sync / 壳里还是上一版产物）。
+    现在改为断言**壳内 `assets/public/sw.js` 的版本号 == 本次构建版本**。
+
 ---
 
 ## 5. 验证要求（用户要求讲清"怎么验证的"）
