@@ -32,7 +32,7 @@
  *    会把食物按"临时自定义"存，既进不了「我的食物库」也丢了份量规则。
  */
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { emitDataChanged } from "@/lib/bus";
 import { nowHM } from "@/lib/date";
 import { nutritionOf } from "@/lib/nutrition/core";
@@ -126,6 +126,18 @@ export function FoodPhotoSheet({
   const [saved, setSaved] = useState<FoodItem | null>(null);
   /** 是否打开了申请面板 */
   const [contributing, setContributing] = useState(false);
+
+  /*
+   * 两个**独立**的 input，因为它们的语义不同、行为也不同：
+   *   cameraRef —— 带 capture，Android 上直接开相机（拍包装当下这一张）
+   *   albumRef  —— 不带 capture，走系统选择器（选相册里已有的图 / 别人发来的成分表截图）
+   *
+   * ⚠️ 不能只留一个带 capture 的 input：那样在手机上**只会**开相机，
+   *    相册里已经拍好的成分表就永远选不到 —— 而"拍下来回头再读"是很自然的用法。
+   *    桌面端浏览器会忽略 capture，所以两个按钮在桌面上都退化成选文件，不影响。
+   */
+  const cameraRef = useRef<HTMLInputElement>(null);
+  const albumRef = useRef<HTMLInputElement>(null);
 
   const hasKey = Boolean(loadApiKeys().deepseekKey?.trim());
 
@@ -279,23 +291,51 @@ export function FoodPhotoSheet({
         ) : stage === "idle" ? (
           <>
             <p className="yq-hint" style={{ marginBottom: 10 }}>
-              对着<strong>包装上的营养成分表</strong>拍一张，读出上面的数字。
+              拍<strong>包装上的营养成分表</strong>，读出上面的数字。
               没有成分表也行 —— 但那样只能估算，误差会很大。
+              也可以从相册里选一张现成的（比如截图）。
             </p>
-            <label className="yq-btn yq-btn-primary" style={{ display: "inline-block" }}>
-              选一张照片
-              <input
-                type="file"
-                accept="image/*"
-                // capture 让手机直接开相机；桌面端忽略它、走选文件
-                capture="environment"
-                style={{ display: "none" }}
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) void pick(f);
-                }}
-              />
-            </label>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button
+                className="yq-btn yq-btn-primary"
+                onClick={() => cameraRef.current?.click()}
+              >
+                📷 拍一张
+              </button>
+              <button className="yq-btn" onClick={() => albumRef.current?.click()}>
+                从相册选
+              </button>
+            </div>
+
+            {/*
+              两个 input 都隐藏，靠上面的按钮 click() 触发。
+              ⚠️ camera 那个必须带 capture="environment"；album 那个**绝不能带** ——
+                 带了就变成"再开一次相机"，相册这条路等于没有。
+            */}
+            <input
+              ref={cameraRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              style={{ display: "none" }}
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void pick(f);
+                // 允许重复选同一张（否则第二次选它不触发 change）
+                e.target.value = "";
+              }}
+            />
+            <input
+              ref={albumRef}
+              type="file"
+              accept="image/*"
+              style={{ display: "none" }}
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void pick(f);
+                e.target.value = "";
+              }}
+            />
             <p className="yq-hint" style={{ marginTop: 10 }}>
               照片会上传到 DeepSeek 读一次，读完即弃，本机不留原图。
             </p>
