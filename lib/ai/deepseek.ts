@@ -17,7 +17,18 @@
  *    所以这里把状态码与异常统一翻成一句中文，并说清下一步做什么。
  */
 
-export type ChatMessage = { role: "system" | "user"; content: string };
+/**
+ * `content` 的块数组形态（OpenAI 兼容）。只有**需要贴图**时才用得上；
+ * 纯文字的调用（recommend / feedback）继续传 `string`，不受影响。
+ *
+ * ⚠️ `image_url` 块**只能出现在 `user` 消息里** —— 放进 `system` / `assistant`
+ * 接口会返回 400（官方 vision 文档明写）。
+ */
+export type ContentBlock =
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string; detail?: "low" | "high" | "original" | "auto" } };
+
+export type ChatMessage = { role: "system" | "user"; content: string | ContentBlock[] };
 
 const BASE_URL = "https://api.deepseek.com";
 
@@ -28,6 +39,28 @@ const BASE_URL = "https://api.deepseek.com";
  */
 export const DEEPSEEK_MODEL = "deepseek-chat";
 
+/**
+ * 读图用的模型。官方 Models 页写明 `deepseek-flash`（DeepSeek-V4.1-Flash）
+ * 支持图片；`deepseek-v4-pro` **不支持**。
+ *
+ * ⚠️ 它**默认 thinking 模式**，要显式关掉（见 `THINKING_DISABLED_BODY`）。
+ * 这条官方文档没给现成请求体，是按 `/guides/thinking_mode` 试出来的 ——
+ * `scripts/probe-vision.mjs` 就是用来验这件事的。
+ */
+export const VISION_MODEL = "deepseek-flash";
+
+/**
+ * 关掉 `deepseek-flash` 的 thinking 模式。
+ *
+ * 为什么必须关：读营养成分表是**转录**任务，答案就在图里，不需要推理链。
+ * 开着 thinking 会（a）多花几分钟推理、（b）多烧一堆 token 在思考内容上，
+ * 而且（c）思考过程会挤占响应正文。对「拍一下马上要结果」这个场景是纯粹的浪费。
+ *
+ * ⚠️ 用一个独立常量、只在视觉路径拼进 body，是为了**不污染现有文字调用**：
+ * `deepseek-chat` 不认识这个字段，早先也确认过文字路径不能带它。
+ */
+const THINKING_DISABLED_BODY = { thinking: { type: "disabled" } } as const;
+
 /** 挑菜不需要创意，需要稳。温度高了它会开始编菜单里没有的菜 */
 const DEFAULT_TEMPERATURE = 0.2;
 
@@ -37,6 +70,16 @@ const DEFAULT_TIMEOUT_MS = 25000;
 export type ChatJSONInput = {
   apiKey: string;
   messages: readonly ChatMessage[];
+  /**
+   * 换模型。不传就还是 `DEEPSEEK_MODEL`（文字场景）。
+   * 视觉场景传 `VISION_MODEL`，走同一个 `chatJSON`，省得再抄一遍错误处理。
+   */
+  model?: string;
+  /**
+   * 带上「关掉 thinking」的字段。只有 `VISION_MODEL` 需要，
+   * 默认 `false` 以免把不认识的字段塞给 `deepseek-chat`。
+   */
+  disableThinking?: boolean;
   temperature?: number;
   timeoutMs?: number;
   /**
@@ -95,12 +138,14 @@ export async function chatJSON<T>(input: ChatJSONInput): Promise<T> {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({
-        model: DEEPSEEK_MODEL,
+        model: input.model ?? DEEPSEEK_MODEL,
         messages: input.messages,
         temperature: input.temperature ?? DEFAULT_TEMPERATURE,
         // JSON 模式：让它只可能吐出一个对象，省掉"从一段闲聊里抠 JSON"的脆弱解析。
         // 注意它不是 schema 校验 —— 字段对不对仍然要靠下面的白名单过滤。
         response_format: { type: "json_object" },
+        // 只给视觉路径带上；文字路径不带，免得给 deepseek-chat 塞它不认识的字段。
+        ...(input.disableThinking ? THINKING_DISABLED_BODY : {}),
       }),
       signal: controller.signal,
     });
