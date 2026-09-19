@@ -59,6 +59,16 @@ export function OtaSection() {
   const { stage, version, done, total, bytes, reason, activeVersion } = ota;
   const mb = (n: number) => (n / 1048576).toFixed(2);
 
+  const showEnable = stage === "ready" && Boolean(version);
+  /**
+   * 「检查更新」除了正在忙的时候**一直留着**。
+   *
+   * ⚠️ 别写成"只在 idle 时显示"：启动后那次自动检查会把 stage 推到 uptodate / failed，
+   * 于是用户打开设置面板时既看到「已是最新版本。」、又找不到任何能重查的按钮 ——
+   * 想手动确认一下更新就没了入口。（`ready` 时下面自带「重新检查」，不重复放。）
+   */
+  const showCheck = !busy && stage !== "checking" && stage !== "downloading" && !showEnable;
+
   async function check() {
     setBusy(true);
     await checkAndDownloadOta();
@@ -83,17 +93,6 @@ export function OtaSection() {
         当前运行：v{process.env.NEXT_PUBLIC_APP_VERSION || "?"}
         {activeVersion ? `（更新版 ${activeVersion}）` : "（安装包内版本）"}
       </p>
-
-      {stage === "idle" || stage === "unsupported" ? (
-        <button
-          className="yq-btn yq-btn-sm yq-btn-ghost"
-          data-yq="ota-check"
-          disabled={busy}
-          onClick={() => void check()}
-        >
-          检查更新
-        </button>
-      ) : null}
 
       {stage === "checking" ? <p className="yq-hint">正在检查…</p> : null}
 
@@ -135,6 +134,17 @@ export function OtaSection() {
             </button>
           </div>
         </div>
+      ) : null}
+
+      {showCheck ? (
+        <button
+          className="yq-btn yq-btn-sm yq-btn-ghost"
+          data-yq="ota-check"
+          disabled={busy}
+          onClick={() => void check()}
+        >
+          检查更新
+        </button>
       ) : null}
     </section>
   );
