@@ -3,7 +3,7 @@
  *
  * 做五件事：
  *   1) 校验版本一致性（package.json / CHANGELOG.md / lib/changelog.ts 三处必须同步）
- *   2) 以正确的 BASE_PATH 构建静态产物
+ *   2) 以正确的 BASE_PATH 构建静态产物（**两份**：站点一份、给安卓壳的 OTA 产物一份，见第 2 节）
  *   3) **给 out/sw.js 注入版本号与构建号** —— 源码里是占位符，注入后缓存名才会变，
  *      浏览器才会认为 SW 更新了、才会清掉旧缓存（详见 public/sw.js 的注释）
  *   4) **发一个 `version.json`**，并把已经打好的安卓安装包一起放到站点上 ——
@@ -14,9 +14,13 @@
  * 用户（尤其是 iOS 主屏 App）会一直卡在旧版本上。这是本项目历史上最难查的一类问题。
  *
  * 为什么有第 4 步：**安卓壳里的资源是打包进 APK 的**，SW 永远说不了"有新版本"。
- * 壳里唯一的更新线索就是比版本号，然后去下载新的安装包。
+ * 壳里唯一的更新线索就是比版本号，然后去下载新版本。
  * ⚠️ 顺序：**先 `npm run android:apk` 再发布**，否则 version.json 里没有安装包地址
  * （脚本会明确警告一句，不会静默漏掉）。
+ *
+ * ⚠️ 一次发布要跑**两次 `next build`**（站点一次、OTA 产物一次），比从前慢一倍。
+ * 这是必须的：两者的 `BASE_PATH` 不同，见第 2 节。想省掉的话只能改部署结构
+ * （比如把站点挪到根域名），别想着用改写产物字符串去凑。
  *
  * 用法：
  *   node scripts/deploy.mjs                 # 正常发布
@@ -31,7 +35,16 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { copyFileSync, mkdirSync, readdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
+import {
+  copyFileSync,
+  cpSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+  existsSync,
+} from "node:fs";
 import { createHash } from "node:crypto";
 import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
@@ -87,7 +100,86 @@ if (!changelogTs.includes(`"${version}"`)) {
 
 // ---------- 2. 构建 ----------
 
-console.log(`\n▶ 构建 v${version}（BASE_PATH=${BASE_PATH}）`);
+/** OTA 产物在站点上的目录；写进 `version.json` 的 `ota.base`，壳按它拼下载地址 */
+const OTA_DIR = "ota";
+
+/**
+ * 断言一份产物是**按根路径**出的 —— 这是"壳里白屏 / 裸样式"的唯一防线。
+ *
+ * 与 `scripts/android/build-apk.ps1` 里那段断言同一套判据（那边守的是装机包，
+ * 这边守的是 OTA 产物，两边喂给 WebView 的东西必须同构）。
+ *
+ * ⚠️ 判据不能只看 `/_next/` 存不存在：带子路径的产物照样有 `/_next/`。
+ * 关键是**有没有前缀**。入口 HTML 是最典型的，但 RSC 的 `.txt`、chunk 里的
+ * 运行时配置都可能带前缀，所以逐个文本文件扫一遍。
+ */
+function assertRootBuild(dir, label) {
+  const index = join(dir, "index.html");
+  if (!existsSync(index)) {
+    console.error(`✗ ${label}里没有 index.html`);
+    process.exit(1);
+  }
+  const html = readFileSync(index, "utf8");
+  if (!html.includes("/_next/")) {
+    console.error(`✗ ${label}的 index.html 里没有 /_next/ 引用 —— 产物不对`);
+    process.exit(1);
+  }
+
+  const prefix = BASE_PATH.replace(/\/$/, "");
+  if (!prefix) return; // 站点本身就部署在根时，这条判据没有意义
+
+  const TEXT = /\.(html|txt|js|css|json|svg|webmanifest)$/;
+  const hits = [];
+  (function scan(d, base) {
+    for (const ent of readdirSync(d, { withFileTypes: true })) {
+      if (ent.name.startsWith(".")) continue;
+      const rel = base ? `${base}/${ent.name}` : ent.name;
+      if (ent.isDirectory()) {
+        scan(join(d, ent.name), rel);
+        continue;
+      }
+      if (!TEXT.test(rel)) continue;
+      if (readFileSync(join(d, ent.name), "utf8").includes(`${prefix}/`)) hits.push(rel);
+    }
+  })(dir, "");
+
+  if (hits.length) {
+    console.error(
+      `✗ ${label}里还带着 ${prefix}/ 子路径前缀 —— 装进安卓壳里会裸样式（页面能开、CSS 与 JS 全 404）：`,
+    );
+    for (const h of hits.slice(0, 10)) console.error(`    ${h}`);
+    if (hits.length > 10) console.error(`    …还有 ${hits.length - 10} 个`);
+    process.exit(1);
+  }
+  console.log(`  ✓ ${label}按根路径生成`);
+}
+
+/*
+ * ⚠️ 必须构建**两份**产物，因为两者基址不同：
+ *
+ *   - **站点**：`BASE_PATH=/yuanqi-ledger` —— GitHub Pages 的项目站点挂在子路径下
+ *   - **壳内**：`BASE_PATH=""` —— Capacitor 的 WebView 从 `https://localhost` 起，站点根就是 `/`
+ *
+ * 拿站点那份去喂壳，HTML 里的 `/yuanqi-ledger/_next/...` 在壳里全部 404：
+ * 页面内容渲染得出来、样式和 JS 一个都不加载，用户看到的是一张裸 HTML。
+ * 这个坑真踩过 —— 本地构建、七道闸门、连"下载到的字节 sha256 全对"都放行，
+ * 只有真机端到端才暴露。**「清单对」不等于「产物能在壳里跑」。**
+ */
+console.log(`\n▶ 构建壳内产物（BASE_PATH=空，给安卓壳的无感更新用）`);
+run("npx", ["next", "build"], {
+  env: { ...process.env, BASE_PATH: "", MSYS_NO_PATHCONV: "1" },
+});
+if (!existsSync(OUT)) {
+  console.error("✗ 壳内构建没有产出 out/ 目录");
+  process.exit(1);
+}
+assertRootBuild(OUT, "壳内产物");
+
+// 挪到系统临时目录暂存：紧接着的那次构建会把 out/ 整个换掉
+const STAGE = join(tmpdir(), `yuanqi-ota-payload-${Date.now()}`);
+cpSync(OUT, STAGE, { recursive: true });
+
+console.log(`\n▶ 构建站点产物（BASE_PATH=${BASE_PATH}）`);
 run("npx", ["next", "build"], {
   env: { ...process.env, BASE_PATH, MSYS_NO_PATHCONV: "1" },
 });
@@ -145,14 +237,17 @@ if (existsSync(apkSrc)) {
 }
 
 /*
- * OTA 资源清单：安卓壳拿着它把站点产物下载到应用私有目录，再把 WebView 基址切过去，
- * 于是不用换安装包就能用上新版本（实现见 docs/HANDOFF-OTA-UPDATE.md）。
+ * OTA 产物：安卓壳拿着清单把**壳内那份产物**（第 2 节里 `BASE_PATH=空` 构建的那份）
+ * 下载到应用私有目录，再把 WebView 基址切过去 —— 于是不换安装包也能用上新版本（实现见 docs/HANDOFF-OTA-UPDATE.md）。
+ *
+ * ⚠️ 放进来的**不是站点产物**，是另一次构建的结果。两者基址不同，拿站点那份去喂壳会裸样式
+ * （页面能开、CSS 与 JS 全 404）—— 原因见第 2 节那段长注释。
  *
  * ⚠️ 只登记**壳真正要加载的界面资源**，三类东西必须排除：
  *   - `version.json` —— 它是"问版本"用的接口，不属于界面资源
- *   - `apk/**` —— 安装包是给系统装应用用的，几十 MB，绝不能进 OTA
- *   - `sw.js` —— 壳里的 SW 会和 OTA 打架（见方案文档 §2.5），先不纳入
  *   - 点开头的文件（`.nojekyll` 等）—— 那是给 GitHub Pages 看的
+ *   - `sw.js` —— 壳里的 SW 会和 OTA 打架（见方案文档 §2.5），先不纳入
+ *   （`apk/` 不在这份产物里：安装包是后面单独拷进站点的，壳也不会去 OTA 它）
  *
  * ⚠️ sha256 一律**现算**，不要手写 —— 手写的校验值和文件对不上时，
  * 表现是"下载每次都失败"，而且很难看出是清单的错还是文件的错。
@@ -160,45 +255,58 @@ if (existsSync(apkSrc)) {
  * ⚠️ 这是**新增字段**：老 APK 只读 `version` 与 `apk`，加字段是安全的；
  * 但既有字段一个都不能动。
  */
-function collectOtaFiles(dir, base = "") {
-  const files = [];
-  for (const ent of readdirSync(dir, { withFileTypes: true })) {
+const payloadRoot = join(OUT, OTA_DIR);
+const otaFiles = [];
+(function copyPayload(srcDir, rel) {
+  for (const ent of readdirSync(srcDir, { withFileTypes: true })) {
     if (ent.name.startsWith(".")) continue;
-    const rel = base ? `${base}/${ent.name}` : ent.name;
+    const relPath = rel ? `${rel}/${ent.name}` : ent.name;
     if (ent.isDirectory()) {
-      if (rel === "apk") continue;
-      files.push(...collectOtaFiles(join(dir, ent.name), rel));
+      copyPayload(join(srcDir, ent.name), relPath);
       continue;
     }
-    if (rel === "version.json" || rel === "sw.js") continue;
-    const bytes = readFileSync(join(dir, ent.name));
-    files.push({
-      path: rel,
+    if (relPath === "version.json" || relPath === "sw.js") continue;
+    const bytes = readFileSync(join(srcDir, ent.name));
+    const dest = join(payloadRoot, relPath);
+    mkdirSync(dirname(dest), { recursive: true });
+    copyFileSync(join(srcDir, ent.name), dest);
+    otaFiles.push({
+      path: relPath,
       bytes: bytes.length,
       sha256: createHash("sha256").update(bytes).digest("hex"),
     });
   }
-  return files;
+})(STAGE, "");
+
+// 暂存目录用完就删。删不掉也不影响发布（它在系统临时目录里），所以不因它中断
+try {
+  rmSync(STAGE, { recursive: true, force: true });
+} catch {
+  console.warn(`⚠ 临时目录没能清掉（不影响发布）：${STAGE}`);
 }
 
-const otaFiles = collectOtaFiles(OUT).sort((a, b) => (a.path < b.path ? -1 : 1));
 if (otaFiles.length === 0) {
-  console.error("✗ OTA 清单是空的 —— out/ 里没有可登记的资源，壳会拿到一份空清单");
+  console.error("✗ OTA 清单是空的 —— 壳内产物里没有可登记的资源，壳会拿到一份空清单");
   process.exit(1);
 }
+otaFiles.sort((a, b) => (a.path < b.path ? -1 : 1));
 const otaBytes = otaFiles.reduce((n, f) => n + f.bytes, 0);
-console.log(`▶ OTA 清单：${otaFiles.length} 个文件 / ${(otaBytes / 1048576).toFixed(2)}MB`);
+console.log(
+  `▶ OTA 产物已放进站点 /${OTA_DIR}/：${otaFiles.length} 个文件 / ${(otaBytes / 1048576).toFixed(2)}MB`,
+);
 
 const versionInfo = {
   version,
   build: buildId,
   site: SITE,
   apk: apkField,
-  ota: { files: otaFiles },
+  ota: { base: OTA_DIR, files: otaFiles },
   at: new Date().toISOString(),
 };
 writeFileSync(join(OUT, "version.json"), JSON.stringify(versionInfo, null, 2) + "\n");
-console.log(`▶ version.json：version=${version} apk=${apkField} ota=${otaFiles.length} 个文件`);
+console.log(
+  `▶ version.json：version=${version} apk=${apkField} ota=${OTA_DIR}/ × ${otaFiles.length} 个文件`,
+);
 
 if (DRY) {
   console.log("\n✓ dry-run 完成，产物在 out/（未推送）");

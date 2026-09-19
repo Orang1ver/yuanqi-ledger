@@ -19,6 +19,7 @@
 import {
   isComplete,
   otaDir,
+  otaRemotePath,
   otaTmpDir,
   OTA_LOCAL_MANIFEST,
   OTA_ROOT,
@@ -302,7 +303,7 @@ export async function downloadOta(options: {
     report({ stage: "downloading", done: 0, total: toDownload.length, bytes: bytesTotal });
 
     for (const f of toDownload) {
-      const res = await fetch(`${REMOTE_SITE}/${f.path}`, { cache: "no-store" });
+      const res = await fetch(`${REMOTE_SITE}/${otaRemotePath(manifest.base, f.path)}`, { cache: "no-store" });
       if (!res.ok) throw new Error(`${f.path}：HTTP ${res.status}`);
       const buf = await res.arrayBuffer();
       if (buf.byteLength !== f.bytes) {

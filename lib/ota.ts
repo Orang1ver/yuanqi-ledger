@@ -12,7 +12,7 @@
 
 /** 清单里的一个文件 */
 export type OtaFile = {
-  /** 相对站点根的路径，如 `_next/static/chunks/abc.js` */
+  /** 相对 **OTA 产物根**（`base`）的路径，如 `_next/static/chunks/abc.js` */
   path: string;
   bytes: number;
   sha256: string;
@@ -20,6 +20,17 @@ export type OtaFile = {
 
 export type OtaManifest = {
   version: string;
+  /**
+   * OTA 产物在站点上的目录，如 `ota`（没有则视为站点根）。
+   *
+   * ⚠️ **为什么不能直接拿站点产物当 OTA 产物**：两者基址不同。
+   * 站点部署在子路径（GitHub Pages 的项目站点 `/yuanqi-ledger/`），
+   * 而壳的 WebView 从 `https://localhost` 起、站点根就是 `/`。
+   * 拿站点那份去喂壳，HTML 里的 `/yuanqi-ledger/_next/...` 会全部 404 ——
+   * 页面能开、CSS 与 JS 全不加载，表现为**裸样式**（真机上踩过）。
+   * 所以发布时会**单独构建一份根基址的产物**放在这个目录下。
+   */
+  base: string;
   files: OtaFile[];
 };
 
@@ -60,6 +71,23 @@ function isSafePath(path: string): boolean {
 }
 
 /**
+ * `base` 是否安全：**空字符串合法**（= 产物就在站点根），否则必须是安全的相对路径段。
+ *
+ * 空必须合法：`ota` 这个字段是后加的，线上可能还跑着一份没有 `base` 的老清单，
+ * 那种清单的语义本来就是"从站点根取"。**缺省宽松、写错严格**。
+ */
+function isSafeBase(base: string): boolean {
+  if (base === "") return true;
+  if (base.endsWith("/")) return false; // 拼 URL 时会变成 `ota//x`
+  return isSafePath(base);
+}
+
+/** 某个文件在站点上的实际路径（`base` 为空时就是它自己） */
+export function otaRemotePath(base: string, path: string): string {
+  return base ? `${base}/${path}` : path;
+}
+
+/**
  * 只取远端 `version.json` 里的**版本号**，不要求它带 OTA 清单。
  *
  * ⚠️ 这一步必须与 `parseManifest` 分开，且调用方要**先调它、再调 `parseManifest`**。
@@ -95,6 +123,11 @@ export function parseManifest(raw: unknown): OtaManifest | null {
   const filesRaw = (ota as Record<string, unknown>).files;
   if (!Array.isArray(filesRaw) || filesRaw.length === 0) return null;
 
+  // `base` 缺省视为站点根（老清单没有这个字段）；写了就必须是安全的相对路径
+  const baseRaw = (ota as Record<string, unknown>).base;
+  const base = baseRaw === undefined || baseRaw === null ? "" : typeof baseRaw === "string" ? baseRaw : null;
+  if (base === null || !isSafeBase(base)) return null;
+
   const files: OtaFile[] = [];
   const seen = new Set<string>();
   for (const item of filesRaw) {
@@ -117,7 +150,7 @@ export function parseManifest(raw: unknown): OtaManifest | null {
     files.push({ path, bytes, sha256 });
   }
 
-  return { version, files };
+  return { version, base, files };
 }
 
 /**

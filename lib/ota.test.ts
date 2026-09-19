@@ -13,6 +13,7 @@ import { describe, it } from "node:test";
 import {
   isComplete,
   otaDir,
+  otaRemotePath,
   otaTmpDir,
   OTA_LOCAL_MANIFEST,
   OTA_ROOT,
@@ -98,6 +99,66 @@ describe("parseManifest —— 正常情况", () => {
     const m = parseManifest(good({ version: "  1.3.0  " }));
     assert.ok(m);
     assert.equal(m.version, "1.3.0");
+  });
+
+  it("没有 base 字段 = 产物就在站点根（老清单的语义）", () => {
+    const m = parseManifest(good());
+    assert.ok(m);
+    assert.equal(m.base, "");
+  });
+
+  it("带 base 字段时原样取出来", () => {
+    const m = parseManifest(
+      good({ ota: { base: "ota", files: [{ path: "index.html", bytes: 1, sha256: "a".repeat(64) }] } }),
+    );
+    assert.ok(m);
+    assert.equal(m.base, "ota");
+  });
+});
+
+/*
+ * `base` 是 OTA 产物与站点产物**基址不同**的产物：站点在子路径下，
+ * 壳的 WebView 在根下，所以发布时要单独构建一份根基址的产物放在这个目录里。
+ * 这几个用例钉住"缺省宽松、写错严格"，以及拼 URL 的边界。
+ */
+describe("base —— OTA 产物在站点上的目录", () => {
+  const withBase = (base: unknown) =>
+    parseManifest(
+      good({ ota: { base, files: [{ path: "index.html", bytes: 1, sha256: "a".repeat(64) }] } }),
+    );
+
+  it("undefined / null 都当站点根", () => {
+    assert.equal(withBase(undefined)?.base, "");
+    assert.equal(withBase(null)?.base, "");
+  });
+
+  it("空字符串也是站点根", () => {
+    assert.equal(withBase("")?.base, "");
+  });
+
+  it("多级目录可以（`assets/ota`）", () => {
+    assert.equal(withBase("assets/ota")?.base, "assets/ota");
+  });
+
+  it("⚠️ 写了但不安全 → 整份作废", () => {
+    const bad: Array<[string, unknown]> = [
+      ["绝对路径", "/ota"],
+      ["结尾多余斜杠（拼出来会变 ota//x）", "ota/"],
+      ["往上跳", "../ota"],
+      ["反斜杠", "ota\\sub"],
+      ["点开头", ".ota"],
+      ["双斜杠", "a//b"],
+      ["不是字符串", 42],
+    ];
+    for (const [name, base] of bad) {
+      assert.equal(withBase(base), null, `应当拒绝：${name}`);
+    }
+  });
+
+  it("otaRemotePath 拼出来的地址", () => {
+    assert.equal(otaRemotePath("", "index.html"), "index.html");
+    assert.equal(otaRemotePath("ota", "index.html"), "ota/index.html");
+    assert.equal(otaRemotePath("ota", "_next/static/chunks/x.js"), "ota/_next/static/chunks/x.js");
   });
 });
 
