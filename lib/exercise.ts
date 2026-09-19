@@ -34,7 +34,12 @@ export function isHikeType(t: ExerciseType): boolean {
   return t === "爬山" || t === "徒步";
 }
 
-/** 按日期倒序，同日按 at 倒序，最新在前 */
+/**
+ * 运动记录的**唯一**排序入口：按日期倒序，同日按 at（录入时间）倒序，最新在前。
+ *
+ * ⚠️ 别在界面层另写一套排序。存储层的 `loadExercises` 与 `addExercise` 都用它，
+ * 少了它，补录一条旧日期的运动就会插到列表最前面（看起来是按补录时间排）。
+ */
 export function sortExercises(list: ExerciseRecord[]): ExerciseRecord[] {
   return [...list].sort((a, b) => (a.date === b.date ? b.at - a.at : b.date.localeCompare(a.date)));
 }
