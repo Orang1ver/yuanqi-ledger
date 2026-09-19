@@ -5,7 +5,9 @@
  * scripts/deploy.mjs 会校验这里是否包含 package.json 的版本号，漏了就不让发布 ——
  * 因为 App 里的"更新了什么"是用户唯一能看到的说明，缺了它用户不知道要不要更新。
  *
- * 与 CHANGELOG.md 的分工：这里是给用户看的短句，CHANGELOG.md 是完整的开发记录。
+ * 与 CHANGELOG.md 的分工：**这里是给用户的** —— App 里唯一能看到的版本说明；
+ * **CHANGELOG.md 是给 agent 与开发者看的**，根因、实现取舍、验证方式全写在那。
+ * 同一件事：那边把原因写透，这边只写结果。
  *
  * 文案口径（与市面上官方更新说明一致）：
  *   - 只讲**新增 / 修复 / 优化**了什么，以及这件事对用户有什么影响；
@@ -21,6 +23,14 @@ export type ChangelogEntry = {
 };
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.3.3",
+    date: "2026-09-19",
+    highlights: [
+      "修复补录的运动记录未按运动日期排序的问题",
+      "补录过往日期的运动后，记录会显示在对应日期，而非停在列表最上方",
+    ],
+  },
   {
     version: "1.3.2",
     date: "2026-09-19",

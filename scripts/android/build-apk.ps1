@@ -95,11 +95,22 @@ if ($sw -notmatch '__VERSION__' -or $sw -notmatch '__BUILD__') {
 
 # ---- 2) 同步进壳 ----
 Write-Host "▶ 同步进安卓壳…"
-npx cap sync android
+# ⚠️ 这里**不用 `npx`**：本机实测 `npx cap sync android` 会在同步完全成功之后仍返回非 0
+# （cap 自己退出码是 0，是 npx 这一层的返回码不可信），于是脚本把一次成功判成失败。
+# 直接调 CLI，拿到的退出码才是真的。
+node node_modules/@capacitor/cli/bin/capacitor sync android
 if ($LASTEXITCODE -ne 0) { Write-Host "✗ cap sync 失败"; exit 1 }
 if (-not (Test-Path "android/app/src/main/assets/public/index.html")) {
   Write-Host "✗ 壳里没有 index.html —— 同步没生效"; exit 1
 }
+
+# ⚠️ 只验"index.html 在"是**抓不住**上面第 2 条静默失败的 —— 那份文件一直都在，
+# 壳里是不是**这一次**的产物，看的是版本号。所以拿壳内 sw.js 与刚构建的版本对一遍。
+$shellSw = Get-Content "android/app/src/main/assets/public/sw.js" -Raw
+if ($shellSw -notmatch "APP_VERSION = `"$([regex]::Escape($version))`"") {
+  Write-Host "✗ 壳内 assets/public/sw.js 不是 $version —— cap sync 没把这次构建的产物同步进去"; exit 1
+}
+Write-Host "  ✓ 壳内产物版本 = $version"
 
 # ---- 3) 打包 ----
 Write-Host "▶ assembleRelease（版本 $version）…"
