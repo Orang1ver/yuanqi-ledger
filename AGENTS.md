@@ -53,6 +53,55 @@
 > 3. 切完分支**再自证一次**：`git rev-parse HEAD` 必须能解析出提交、且
 >    `git rev-parse HEAD^` 指向预期的父提交
 
+> ### 🔴 本机 git 会静默删文件 —— 别用 `git merge`，也别用 `git checkout` 切分支
+> （2026-09-19 出过一次事故，`.git` 被整个送进回收站）
+>
+> **现象**：`git merge --no-ff` 撞上「stat 抖动」的工作区而报 `stash failed`；
+> 紧接着 `.git/refs/` 整棵树消失、`objects/` 下 76 个分片目录全空、`pack/*.pack` 不见，
+> 此后**每条命令都报 `fatal: not a git repository`**
+> —— git 判定「这是不是仓库」要求 `HEAD` + `objects` + `refs` **三者齐全**，缺一个就不认。
+> 同一批操作里 `git checkout <branch>` 还把 `scripts/` 下 17 个文件整个删掉，**稳定复现两次**。
+> 「stat 抖动」的判据：`git status` 冒出一批 ` M`，但 `git diff` 与 `git diff --cached`
+> **都是空的**、`git hash-object` 与 `HEAD:<path>` 的 hash 相同（内容其实一致）。
+>
+> **文件没真丢**：约 1062 个 `.git` 文件被送进了 **Windows 回收站**（含 `objects\<xx>\<sha>` 松散对象），
+> 定向捞回后 `git fsck` 无 missing/broken。
+> ⚠️ **但触发那一千次删除的主体没有坐实** —— 删除守卫状态里当时只记了 `count=1`，
+> 说明**不是走 shim 的 `rm`**。**别把根因写成已确证。**
+>
+> **规矩（每条都有代价）**：
+> 1. **动手前先 `cp -r .git <仓库外路径>`** —— 这是唯一真正救命的动作，先做再说话
+> 2. **合并用底层管道，不用 `git merge`**：
+>    ```bash
+>    T=$(git merge-tree --write-tree main <分支>)          # 只算树，不碰工作区
+>    M=$(git commit-tree "$T" -p "$(git rev-parse main)" -p "$(git rev-parse <分支>)" -F msg)
+>    git update-ref refs/heads/main "$M" && git rev-parse main   # 必须复核
+>    git cat-file blob "$M":<path> > <path>                 # 需要时把文件写回工作区
+>    git read-tree "$M"                                     # 刷 index
+>    git diff && git diff --cached && git status --short    # 三者全空才算好
+>    ```
+> 3. **别用 `git checkout <branch>` 切分支** —— 要看别的分支的内容用 `git show <ref>:<path>`；
+>    确实非切不可，切完**立刻 `git status` 查有没有成片的 `D`**
+> 4. **`git update-ref` 会静默不生效**（退出码 0 但值没变，实测 `refs/remotes/origin/main` 改不动）
+>    → 写完**必须 `git rev-parse` 复核**；改不动就手写 loose ref 文件（父目录须已存在），
+>    嵌套目录建不出来时（见上一个红框）直接改 `.git/packed-refs`
+> 5. 真出事后**别点「一键还原回收站」** —— 那会把几千条本不该回来的东西撒回各处、
+>    并用旧版本**覆盖**已修好的状态。按 `$I` 元数据**定向恢复**、只补「目标不存在」的，见下
+
+#### 出事后怎么做（`.git` 被送进回收站）
+
+1. **先封存损坏态**：`cp -r .git <仓库外>/git-broken-<时间>`
+2. **找回收站**：`C:\$Recycle.Bin\<SID>\`。`$I<ID>` 是元数据、`$R<ID>` 是同 6 字符 ID 的内容。
+   `$I` 布局：`ts=偏移16..24`（FILETIME）/ `len=24..28` / 文件名 `28:`（UTF-16LE）。
+   按 `ts` 换算成本地时间，就能定位「出事那一刻」那一批。
+3. **定向恢复**：
+   - 松散对象 `objects\<xx>\<sha>` → 写回同名路径
+   - `objects\pack\pack-*.pack` → 连 `.idx` / `.rev` / `objects\info\packs` 一起还原；
+     完整性用「魔数 `PACK` + 末尾 sha1 与文件名一致」自证
+   - `refs\heads\*` / `refs\tags\*` → 逐个捞回后**读回值核对**（是完整 SHA）
+4. **自证恢复成功**：`git count-objects -v`（`in-pack` 不为 0）、
+   `git fsck --no-progress`（无 missing/broken）、`git log --oneline -3`
+
 ### 日常开发
 
 用户**平时就在用这个程序**，所以不要直接改他正在用的目录。
