@@ -17,6 +17,14 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.3.1",
+    date: "2026-09-19",
+    highlights: [
+      "修好了「无感更新」：上一版点「立即更新」之后，页面会变成没有样式、也点不动的样子 —— 现在切过去一切正常",
+      "记录一直是安全的：出问题的只是界面资源的加载路径，从头到尾没动过你的数据",
+    ],
+  },
+  {
     version: "1.3.0",
     date: "2026-09-19",
     highlights: [
