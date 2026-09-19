@@ -1,0 +1,12 @@
+# 行尾策略
+#
+# ⚠️ Windows 上 core.autocrlf 常是 true，检出时会把文本文件换成 CRLF。
+# 对 JS/TS/Python 无害，但**对 shell 脚本是致命的**：`#!/usr/bin/env bash` 会变成
+# `#!/usr/bin/env bash\r`，报 "bad interpreter: No such file or directory"，
+# 而且报错信息完全指不到真因。所以 shell 脚本必须显式要求 LF。
+*.sh text eol=lf
+
+# 下面两个不设也行，写出来是为了把「它们各自需要什么」讲清楚，免得后人改错：
+# - *.ps1 需要 **UTF-8 with BOM**（见 scripts/android/build-apk.ps1 头部注释），
+#   那是字节层面的事，跟行尾无关，所以这里不动它。
+# - *.mjs / *.ts 用 CRLF 无害。
