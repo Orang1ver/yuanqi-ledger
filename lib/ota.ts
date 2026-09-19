@@ -60,21 +60,37 @@ function isSafePath(path: string): boolean {
 }
 
 /**
+ * 只取远端 `version.json` 里的**版本号**，不要求它带 OTA 清单。
+ *
+ * ⚠️ 这一步必须与 `parseManifest` 分开，且调用方要**先调它、再调 `parseManifest`**。
+ * 理由：线上可能正跑着一份**没有 `ota` 字段**的部署（比如回滚过、或那还是老版本发布）。
+ * 那种情况下"没有可更新的东西"是正常的，可一旦先解析清单就会失败，
+ * 于是界面把一句本来只是"暂无更新"说成了一次错误 —— 而它根本不是错误。
+ *
+ * 坏数据一律 `null`（与 `lib/update.ts` 的 `fetchRemoteVersion` 一个风格）。
+ */
+export function readVersion(raw: unknown): string | null {
+  if (!raw || typeof raw !== "object") return null;
+  const v = (raw as Record<string, unknown>).version;
+  return typeof v === "string" && v.trim() ? v.trim() : null;
+}
+
+/**
  * 解析远端 `version.json`，取出 OTA 清单。
  *
  * 入参是**整个 `version.json`**（不是里面的 `ota` 字段）—— 因为版本号在外层，
  * 而这两样东西必须一起拿到才有意义（版本没变就不该下任何东西）。
  *
  * 任何一项不合格就返回 `null`：宁可"这次不更新"，也不要拿着半截清单去覆盖用户的 App。
+ *
+ * ⚠️ 调用方应当**已经比过版本号**（用 `readVersion` + `isNewer`）——
+ * 这里返回 `null` 才真正意味着"这个新版本发布得不完整"。
  */
 export function parseManifest(raw: unknown): OtaManifest | null {
-  if (!raw || typeof raw !== "object") return null;
-  const root = raw as Record<string, unknown>;
-
-  const version = typeof root.version === "string" ? root.version.trim() : "";
+  const version = readVersion(raw);
   if (!version) return null;
 
-  const ota = root.ota;
+  const ota = (raw as Record<string, unknown>).ota;
   if (!ota || typeof ota !== "object") return null;
   const filesRaw = (ota as Record<string, unknown>).files;
   if (!Array.isArray(filesRaw) || filesRaw.length === 0) return null;

@@ -24,6 +24,7 @@ import {
   OTA_ROOT,
   parseManifest,
   planDownload,
+  readVersion,
   totalBytes,
   verifyFile,
   type OtaManifest,
@@ -237,17 +238,26 @@ export async function downloadOta(options: {
 
   report({ stage: "checking", done: 0, total: 0, bytes: 0 });
 
-  let manifest: OtaManifest | null = null;
+  let payload: unknown;
   try {
     const res = await fetch(`${REMOTE_SITE}/version.json?t=${Date.now()}`, { cache: "no-store" });
     if (!res.ok) return { kind: "failed", reason: `拿不到更新清单（HTTP ${res.status}）` };
-    manifest = parseManifest((await res.json()) as unknown);
+    payload = (await res.json()) as unknown;
   } catch {
-    return { kind: "failed", reason: "拿不到更新清单（网络不通或格式不对）" };
+    return { kind: "failed", reason: "拿不到更新清单（网络不通）" };
   }
-  if (!manifest) return { kind: "failed", reason: "更新清单格式不对" };
-  if (!isNewer(manifest.version, currentVersion)) {
-    return { kind: "uptodate", version: manifest.version };
+
+  // ⚠️ 顺序不能反：**先比版本号，再解析清单**（见 lib/ota.ts 里 readVersion 的注释）。
+  // 反过来的话，"线上还是老部署、压根没有 ota 字段"这种正常情况会被报成一次失败。
+  const remoteVersion = readVersion(payload);
+  if (!remoteVersion) return { kind: "failed", reason: "更新清单里读不出版本号" };
+  if (!isNewer(remoteVersion, currentVersion)) {
+    return { kind: "uptodate", version: remoteVersion };
+  }
+
+  const manifest = parseManifest(payload);
+  if (!manifest) {
+    return { kind: "failed", reason: "线上这一版的更新清单不完整，这次先跳过" };
   }
 
   if (await isVersionReady(native, manifest)) {

@@ -18,6 +18,7 @@ import {
   OTA_ROOT,
   parseManifest,
   planDownload,
+  readVersion,
   sha256Hex,
   totalBytes,
   verifyFile,
@@ -41,6 +42,40 @@ function good(overrides: Record<string, unknown> = {}) {
 }
 
 const buf = (s: string): ArrayBuffer => new TextEncoder().encode(s).buffer as ArrayBuffer;
+
+describe("readVersion —— 只取版本号，不要求带 ota 清单", () => {
+  it("有 ota 清单时就是外层那个 version", () => {
+    assert.equal(readVersion(good()), "1.3.0");
+  });
+
+  it("⚠️ 没有 ota 字段也拿得到 —— 线上还是老部署时，「暂无更新」不该被报成失败", () => {
+    assert.equal(readVersion({ version: "1.2.0", apk: "apk/yuanqi-ledger-1.2.0.apk" }), "1.2.0");
+  });
+
+  it("两端空白要 trim", () => {
+    assert.equal(readVersion({ version: "  1.3.0  " }), "1.3.0");
+  });
+
+  it("坏输入一律 null（版本号来自网络，坏数据不该让检查更新崩掉）", () => {
+    const bad = [null, undefined, 0, "", "1.3.0", [], {}, { version: "" }, { version: "   " }, { version: 3 }];
+    for (const input of bad) {
+      assert.equal(readVersion(input), null, `应当为 null：${JSON.stringify(input) ?? String(input)}`);
+    }
+  });
+});
+
+describe("readVersion 与 parseManifest 的分工", () => {
+  /**
+   * ⚠️ 这是「先比版本号、再解析清单」那个顺序的判据。
+   * 反过来的话，下面这种老部署（线上真实存在过：1.2.0 的 version.json 就没有 ota 字段）
+   * 会被当成一次错误，而不是「已是最新版本」。
+   */
+  it("没有 ota 清单时：readVersion 成功，parseManifest 失败", () => {
+    const older = { version: "1.2.0", apk: "apk/yuanqi-ledger-1.2.0.apk" };
+    assert.equal(readVersion(older), "1.2.0");
+    assert.equal(parseManifest(older), null);
+  });
+});
 
 describe("parseManifest —— 正常情况", () => {
   it("取出版本号与文件列表", () => {
