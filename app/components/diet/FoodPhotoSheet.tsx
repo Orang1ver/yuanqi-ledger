@@ -44,6 +44,7 @@ import type { FoodCategory, FoodItem } from "@/lib/nutrition/types";
 import { loadApiKeys } from "@/lib/prefs";
 import { addCustomFood, CustomFoodStorageError, recordDietEntry } from "@/lib/storage";
 import type { MealSlot } from "@/lib/tags";
+import { ContributeSheet } from "./ContributeSheet";
 
 type Stage = "idle" | "compressing" | "reading" | "done" | "error";
 
@@ -121,6 +122,10 @@ export function FoodPhotoSheet({
   });
   /** 这一次吃掉的量。字符串 state（地雷 5） */
   const [gramsText, setGramsText] = useState("100");
+  /** 存好之后拿到的条目 —— 有值就切到"要不要申请进正式库"那一屏 */
+  const [saved, setSaved] = useState<FoodItem | null>(null);
+  /** 是否打开了申请面板 */
+  const [contributing, setContributing] = useState(false);
 
   const hasKey = Boolean(loadApiKeys().deepseekKey?.trim());
 
@@ -211,7 +216,9 @@ export function FoodPhotoSheet({
       });
       emitDataChanged();
       onSaved?.(added);
-      onClose();
+      // 存好后**不立刻关**：让用户有机会顺手申请进正式库 ——
+      // 刚核完一遍数字是"最想贡献"的时刻，错过这村就没这店了。
+      setSaved(added);
     } catch (e) {
       setErr(e instanceof CustomFoodStorageError || e instanceof Error ? e.message : String(e));
     }
@@ -251,6 +258,24 @@ export function FoodPhotoSheet({
           <p className="yq-empty">
             这个功能要联网认图，得先填一个 DeepSeek Key。到「设置 → AI 接口 Key」里粘贴一个再回来。
           </p>
+        ) : saved ? (
+          <>
+            <p className="yq-hint" style={{ marginBottom: 10 }}>
+              ✓ 已存进「我的食物库」并记了一笔：<strong>{saved.name}</strong>。
+              以后搜这个名字就能找到它。
+            </p>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button className="yq-btn yq-btn-primary" onClick={onClose}>
+                好了
+              </button>
+              <button className="yq-btn yq-btn-ghost" onClick={() => setContributing(true)}>
+                申请进正式库，让别人也能用
+              </button>
+            </div>
+            <p className="yq-hint" style={{ marginTop: 10 }}>
+              申请就是把这条食物报给开发者核定。核定后会进所有人的正式库。
+            </p>
+          </>
         ) : stage === "idle" ? (
           <>
             <p className="yq-hint" style={{ marginBottom: 10 }}>
@@ -450,6 +475,27 @@ export function FoodPhotoSheet({
           </>
         )}
       </div>
+
+      {contributing && saved && (
+        <ContributeSheet
+          food={saved}
+          verdict={
+            verify
+              ? `${
+                  verify.verdict === "ok"
+                    ? "算术闭合通过"
+                    : verify.verdict === "suspect"
+                      ? "算术闭合存疑"
+                      : "算术闭合不通过"
+                }${verify.closurePct !== undefined ? `（${verify.closurePct.toFixed(1)}%）` : ""} · NRV 核对${
+                  verify.reasons.some((r) => r.includes("NRV") || r.includes("参考值")) ? "有冲突" : "通过"
+                }`
+              : undefined
+          }
+          energyKj={reading?.energy_kj}
+          onClose={() => setContributing(false)}
+        />
+      )}
     </div>
   );
 }
