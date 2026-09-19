@@ -15,7 +15,7 @@
 import { mealSlotFromTime } from "../date";
 import type { MealSlot } from "../tags";
 import { fallbackGrams, makeDietEntry, resolvePortion } from "./core";
-import { findFoodByName, foodsByCategory, portionTable, searchFoods } from "./library";
+import { bestNameMatch, findFoodByName, foodsByCategory, portionTable, searchFoods } from "./library";
 import { parseFragment, splitFragments } from "./parse";
 import type { DietEntry, DietEntrySource, FoodCategory, FoodItem, PortionRule } from "./types";
 
@@ -130,6 +130,23 @@ function missingExplain(name: string, reason: MissingReason): string {
 }
 
 /**
+ * 主食尾缀 —— 一句话以这些字收尾时，说明用户点的是**一道主食**。
+ *
+ * 长词在前不是风格问题：`endsWith` 只判一次，写「饭」在「盖饭」前面也不影响结果，
+ * 但列全一点便于以后有人查"到底认哪些"。
+ */
+const STAPLE_SUFFIXES = ["盖浇饭", "盖饭", "拌饭", "炒饭", "饭", "面条", "拉面", "米线", "米粉", "河粉", "粉丝", "面", "粥"];
+
+/**
+ * 「被查询包含」这一档（查询比食物名长）要求：命中的名字得覆盖查询的这么多字。
+ *
+ * 0.6 这条线不是新发明的 —— `menu.ts` 里估算外卖菜品时用的就是它（`coveredRatio`），
+ * 那条规矩是「拆不干净就拒绝估算」（AGENTS 地雷 16）。这里只是把同一条线
+ * 接到单句记账这条路上来。
+ */
+const MIN_NAME_COVERAGE = 0.6;
+
+/**
  * 找食物：先精确名再模糊 — 精确优先，免得「奶茶」被「奶茶（无糖）」抢走。
  *
  * ⚠️ **单字不给模糊检索。** 模糊检索有一条「被查询包含」的规则
@@ -137,6 +154,19 @@ function missingExplain(name: string, reason: MissingReason): string {
  * 实测把量词残渣「包」配成了「肉包」200g。宁可返回 undefined 让上层说"没匹配到"，
  * 也不要给出一个**看起来正常的错数字**。
  * 单字的**精确**命中仍然放行（库里有「醋」「盐」这种正名单字）。
+ *
+ * ⚠️ **2026-09-19 加的两条守卫：库里没有的菜名，不许退而记成其中一样原料。**
+ * 起因是实测：库里没有的菜名会掉进「被查询包含」那一档，而那一档挑的是
+ * **名字最长的原料**（名字短者优先只用于同分）——
+ *   一份番茄炒蛋  → 记成一个西红柿，**42 kcal**（真实约 180）
+ *   一份青椒肉丝  → 记成青椒，**50 kcal**（真实约 250）
+ *   一份咖喱牛肉饭 → 记成 10g 咖喱粉（走了别名「咖喱」），**34 kcal**（真实约 650）
+ * 它还会标上「估算」，所以看起来完全正常 —— 这正是这个项目最不能接受的那种错。
+ * 两条守卫都只在**第 40 档**生效（精确/开头/包含那三档是"用户点名了一部分"，
+ * 不存在这个问题），触发时返回 undefined，走**已有的**「库里没有 X，挑一个相近的」那条路：
+ *   ① 命中的名字要覆盖查询的 ≥60% 字（否则就是"只匹配到里面一样原料"）
+ *   ② 查询以主食尾缀收尾时，命中的名字本身也得带那个尾缀
+ *      （「鱼香肉丝饭」不能记成「鱼香肉丝」—— 那会把整碗米饭丢掉）
  */
 export function matchFood(name: string): FoodItem | undefined {
   const q = name.trim();
@@ -144,7 +174,17 @@ export function matchFood(name: string): FoodItem | undefined {
   const exact = findFoodByName(q);
   if (exact) return exact;
   if (q.length < 2) return undefined;
-  return searchFoods(q, 1)[0];
+
+  const hit = searchFoods(q, 1)[0];
+  if (!hit) return undefined;
+
+  const { score, hit: hitName } = bestNameMatch(hit, q);
+  if (score === 40) {
+    const coverage = hitName.length / q.length;
+    if (coverage < MIN_NAME_COVERAGE) return undefined;
+    if (STAPLE_SUFFIXES.some((s) => q.endsWith(s) && !hitName.includes(s))) return undefined;
+  }
+  return hit;
 }
 
 /**
