@@ -17,6 +17,13 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.3.2",
+    date: "2026-09-19",
+    highlights: [
+      "「无感更新」又修了一处：这回错在更新程序自己身上，而且只在设备上已经有旧版本时才会触发 —— 所以第一次安装后测不出来",
+    ],
+  },
+  {
     version: "1.3.1",
     date: "2026-09-19",
     highlights: [
