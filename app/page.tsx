@@ -2,6 +2,7 @@ import { CheckinCard } from "./components/health/CheckinCard";
 import { ExerciseCard } from "./components/health/ExerciseCard";
 import { WeightCard } from "./components/health/WeightCard";
 import { DataOverview } from "./components/today/DataOverview";
+import { PickDishCard } from "./components/today/PickDishCard";
 import { WhatToEatCard } from "./components/today/WhatToEatCard";
 import { BottomNav, PageHeader } from "./components/shell/BottomNav";
 import { SettingsButton } from "./components/shell/SettingsButton";
@@ -26,6 +27,8 @@ export default function TodayPage() {
           action={<SettingsButton />}
         />
 
+        {/* 先决定吃哪道，吃完才谈缺口 —— 所以「今天吃什么」在上面 */}
+        <PickDishCard />
         <WhatToEatCard />
         <CheckinCard />
         <WeightCard />

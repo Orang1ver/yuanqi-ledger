@@ -113,3 +113,18 @@ export function isSeasoning(label: string): boolean {
 export function findTagDef(label: string): TagDef | undefined {
   return [...FLAVOR_TAGS, ...AVOID_TAGS, ...METHOD_TAGS].find((t) => t.label === label);
 }
+
+/**
+ * 从健康档案那段**自由文本**的忌口里，认出结构化标签。
+ *
+ * ⚠️ **只认逐字命中，不做同义词猜测。** 猜错了的后果是"该避的没避"——
+ * 比不避更糟：用户会以为系统帮他看着。用户写「乳糖不耐」就是「乳糖不耐」，
+ * 系统不认识它就不认识，不许自作主张映射成「无乳制品」。
+ *
+ * 两个调用方（首页的「今天吃什么」与「今天还该吃点啥」）必须走同一个判据 ——
+ * 各写一份的话，同一个人会在两张卡上得到两套忌口口径。
+ */
+export function avoidLabelsFromText(text: string | undefined): string[] {
+  if (!text) return [];
+  return AVOID_TAGS.map((t) => t.label).filter((label) => text.includes(label));
+}

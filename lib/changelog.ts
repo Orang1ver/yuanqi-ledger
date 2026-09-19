@@ -17,6 +17,15 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.2.0",
+    date: "2026-09-19",
+    highlights: [
+      "首页多了「今天吃什么」：从你自己的菜单库里挑一道，可以「换一个」；挑好了点「就吃这个」，直接记进饮食日记",
+      "不用先记账、不用填 Key、断网也能用 —— 以前那几个推荐入口都要求「今天已经记过东西」",
+      "套餐长名算不出热量的菜照样会被推荐，只是不给数字，旁边给一条「关联一下」的出路",
+    ],
+  },
+  {
     version: "1.1.1",
     date: "2026-09-19",
     highlights: [
