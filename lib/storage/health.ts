@@ -17,6 +17,7 @@ import type {
 import { KEYS } from "./keys";
 import { readJSON, writeJSON } from "./io";
 import { addDays, weekStartOf } from "../date";
+import { sortExercises } from "../exercise";
 import { normalizeRewards } from "../rewards";
 
 // ---------- 健康档案 ----------
@@ -108,13 +109,18 @@ export function removeWeight(date: string): Record<string, WeightEntry> {
 
 // ---------- 运动 ----------
 
+/**
+ * ⚠️ 读出来就排好序（判据在 `sortExercises`）：按**运动日期**倒序，同日按录入时间倒序。
+ * 存储里的顺序原本是「录入序」—— 补录一条上周的运动时它会插到最前面，
+ * 列表看起来就成了按补录时间排。**存量数据也是这个顺序**，所以排序必须放在读取侧。
+ */
 export function loadExercises(): ExerciseRecord[] {
-  return readJSON<ExerciseRecord[]>(KEYS.exercises, []);
+  return sortExercises(readJSON<ExerciseRecord[]>(KEYS.exercises, []));
 }
 
-/** 追加一条，返回最新列表（最新在前） */
+/** 追加一条，返回最新列表（按运动日期倒序，同日按录入时间倒序） */
 export function addExercise(input: Omit<ExerciseRecord, "id" | "at">): ExerciseRecord[] {
-  const next = [{ ...input, id: uuid(), at: Date.now() }, ...loadExercises()];
+  const next = sortExercises([{ ...input, id: uuid(), at: Date.now() }, ...loadExercises()]);
   writeJSON(KEYS.exercises, next);
   return next;
 }
