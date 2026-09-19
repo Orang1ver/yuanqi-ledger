@@ -1,7 +1,7 @@
 # AGENTS.md —— 元气账本项目约定（接手前必读）
 
 > 这份文件是给**任何在此项目上工作的 agent**（Codex / Claude / 其他）看的。
-> 用户是中文母语者，请用**中文**汇报。
+> 用户是中文母语者：**思考过程（reasoning / thinking）用中文，最终回复也用中文。**
 
 ---
 
@@ -125,6 +125,52 @@ cd "$REPO" && node scripts/deploy.mjs
 
 ⚠️ **构建必须在沙箱外跑**：Next.js 清理旧 `.next`（数千个文件）会撞上批量删除保护，
 报 `[safe-delete][SAFE_DELETE_BULK_CONFIRM_REQUIRED]` —— 与代码无关，别去改构建配置。
+
+#### 发布脚本报 `could not read Username` 怎么办（2026-09-19 实测）
+
+脚本在 push 那一步挂掉，报：
+
+```
+fatal: could not read Username for 'https://github.com': terminal prompts disabled
+```
+
+**成因**：源码仓库的 `origin` URL 里**不带凭据**，而 `execFileSync` 起的那个 git
+**拉不起凭据助手**（就是下面 §「凭据助手」说的老问题），于是没人能提供用户名。
+⚠️ **这跟 TLS、代理、hosts 都无关**，别去查那些。
+
+**解法**：把 token 直接给进 URL，同时**关掉**那个拉不起来的助手：
+
+```bash
+RAW=$(printf 'protocol=https\nhost=github.com\n\n' | git credential fill)
+TOKEN=$(printf '%s\n' "$RAW" | sed -n 's/^password=//p')   # 整段抓下来再锚定，别逐行判
+DEPLOY_REMOTE_URL="https://Orang1ver:${TOKEN}@github.com/Orang1ver/yuanqi-ledger.git" \
+DEPLOY_GIT_CONFIG="-c credential.helper= -c http.curloptResolve=github.com:443:140.82.112.3" \
+  node scripts/deploy.mjs
+```
+
+两个 `-c` **缺一不可**：`credential.helper=` 关掉坏助手，`curloptResolve` 走真机证书。
+
+⚠️ **失败在这次之后不必重跑整条**（实测整条要 **12 分钟**，时间几乎全在 `next build`）：
+脚本是**先构建、后推送**，所以失败时 `out/` 里的产物、`out/.git` 里的提交**都已就绪**，
+只补两条 push 即可：
+
+```bash
+git -C out -c credential.helper= -c http.curloptResolve=github.com:443:140.82.112.3 \
+  push --force "$URL" gh-pages:gh-pages
+git tag -f v1.3.0 && git push --force "$URL" v1.3.0
+```
+
+判据：`out/version.json` 里的 `version` 已是目标版本、`git -C out log` 有 `build: v…` 那条提交。
+
+#### 发布后核验线上清单（有 OTA 之后才有这一步）
+
+```bash
+node scripts/verify-ota-live.mjs        # 等 CDN 传开 1~3 分钟再跑
+```
+
+它把线上 `version.json` 的 `ota.files` **逐条下回来核对字节数与 sha256**。
+清单是发布时现算的，路径写错或某个文件没推上去时，**本地构建、七道闸门全都察觉不到** ——
+只有壳真的去下载时才失败，而且失败得很晚。这是唯一能提前发现的办法。
 
 ### ⚠️ TLS：schannel 吊销检查会让 git 全挂（2026-09-18 实测）
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { checkAndDownloadOta, confirmOtaBoot, refreshOtaState } from "@/lib/ota-runner";
 import { seedDefaultIngredientsIfEmpty } from "@/lib/storage/meals";
 import { seedTakeoutMockIfEmpty } from "@/lib/storage/takeout";
 import { applyTheme, loadThemeChoice, resolveTheme } from "@/lib/theme";
@@ -31,6 +32,36 @@ export function AppInit() {
         reg.update().catch(() => {});
       })
       .catch(() => {});
+  }, []);
+
+  /**
+   * OTA 的两件事，顺序不能反：
+   *
+   * 1) **先确认上次切换成功** —— 能渲染到这儿就说明新版本没白屏，把 `.pending` 删掉，
+   *    回滚保险就不会误触发。⚠️ 必须延迟一拍：页面还没画出来就宣布"成功"，
+   *    等于把证据自己删了，保险形同虚设。
+   * 2) **再检查并下载新版本** —— 只下载、不切换（切换由用户在设置面板里点）。
+   *    再晚一点开始：别跟首屏和 SW 注册抢带宽。
+   *
+   * 这两件事只在**壳里**有意义；浏览器里 `loadNative()` 直接返回 null，安静退出。
+   */
+  useEffect(() => {
+    if (process.env.NODE_ENV !== "production") return;
+
+    const confirmTimer = window.setTimeout(() => {
+      void confirmOtaBoot().then((cleared) => {
+        if (cleared) void refreshOtaState();
+      });
+    }, 1500);
+
+    const checkTimer = window.setTimeout(() => {
+      void checkAndDownloadOta();
+    }, 5000);
+
+    return () => {
+      window.clearTimeout(confirmTimer);
+      window.clearTimeout(checkTimer);
+    };
   }, []);
 
   useEffect(() => {

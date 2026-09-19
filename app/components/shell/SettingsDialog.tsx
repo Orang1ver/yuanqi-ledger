@@ -19,6 +19,7 @@ import {
 import { describeBackupStatus, shouldRemindBackup } from "@/lib/storage/backupReminder";
 import { ImportPreview } from "./ImportPreview";
 import { AndroidApkSection } from "./AndroidApkSection";
+import { OtaSection } from "./OtaSection";
 
 /**
  * 设置面板。
@@ -358,6 +359,9 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
         </section>
 
         <AndroidApkSection />
+
+        {/* 无感更新（OTA）：只在安卓壳里渲染，见该组件的说明 */}
+        <OtaSection />
 
         <ChangelogSection />
 
