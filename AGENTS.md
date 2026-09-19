@@ -226,7 +226,7 @@ CRYPT_E_NO_REVOCATION_CHECK (0x80092012) - 吊销功能无法检查证书是否�
     **LLM 只负责「听懂」与「措辞」，数值一律回库里查表**，且要过 schema 校验
     （食物必须在候选集内、克数在合理区间）。校验失败就降级为「追问用户一句」。
     让模型直接吐热量数字，数据很快会变成幻觉垃圾。
-    已落地：`lib/nutrition/`（纯函数 + 查库 + 份量解析）与 `data/foods.zh.json`（223 条）。
+    已落地：`lib/nutrition/`（纯函数 + 查库 + 份量解析）与 `data/foods.zh.json`（249 条）。
     该层**不许 import UI / Next / localStorage 的东西**，id 与时间戳由调用方传进来
     （不在里面 `Date.now()`）—— 换来的是它能在 Node 里被直接调用、被单测、被闸门检查。
 11. **「没有数据」不等于「0」**。`sodium` / `fiber` 在库里查不到时必须保持 `undefined`，
@@ -279,7 +279,7 @@ CRYPT_E_NO_REVOCATION_CHECK (0x80092012) - 吊销功能无法检查证书是否�
     这个 bug 已经犯过一次，探针里能一眼看出来：正确时输出「折算：1 ×『一包』70g」，
     退化时输出「按分类兜底 50g（估算）」。
 15. **食物库只该被需要它的页面 import**。`lib/nutrition/library.ts` 会带上那份
-    223 条食物、约 59KB（gzip 12.4KB）的 JSON。目前需要它的是饮食页、菜单库、
+    249 条食物、约 57KB（gzip 10.3KB）的 JSON。目前需要它的是饮食页、菜单库、
     首页的推荐；**健康小屋与周报不需要**（周报的质量分只依赖记录里的营养快照）。
     给新页面加功能时容易顺手 import 进来，构建后对比一下各页面引用的 chunk 里
     有没有食物名就知道了。相关文件里都留了这条注释，别删。
@@ -544,7 +544,7 @@ python scripts/verify-subpath.py                                # 子路径点�
 
 ```bash
 npm run check:data        # 既有结构的数据还读得出来吗
-npm run smoke             # 真实浏览器里真的画出来了吗（5 个页面 + 17 个定向交互检查）
+npm run smoke             # 真实浏览器里真的画出来了吗（5 个页面 + 14 个定向交互检查）
 npm run check:nutrition   # 食物库算术自洽吗 + 每条食物有没有份量规则 + 具体规则有没有被泛化规则挡住
 npm run check:reference   # 抄来的数值有没有台账；按配方估算的能不能重算回去
 npm test                  # 营养层与数据层语义对吗（无数据≠0、快照、数字只能来自一次乘法）
