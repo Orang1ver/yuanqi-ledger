@@ -228,6 +228,7 @@ const BACKUP_GROUPS: { label: string; match: string; counting: "items" | "single
   { label: "运动记录", match: "exercise", counting: "items" },
   { label: "饮食记录", match: "mealRecords", counting: "items" },
   { label: "饮食日记", match: "dietLog", counting: "items" },
+  { label: "我的食物库", match: "customFoods", counting: "items" },
   { label: "菜单库", match: "takeoutMock", counting: "items" },
   { label: "AI Key", match: "apikeys", counting: "single" },
   { label: "饮食偏好笔记", match: "userProfile", counting: "single" },

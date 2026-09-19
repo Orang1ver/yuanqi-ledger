@@ -110,6 +110,25 @@ describe("导入预览（结构化）", () => {
     assert.equal(d.groups.find((g) => g.label === "运动记录")?.count, 3);
   });
 
+  it("「我的食物库」补了分组 —— 不补的话导入预览里根本看不到它", () => {
+    const d = describeBackupDetail(
+      backupText({
+        [KEYS.customFoods]: [{ id: "user-1" }, { id: "user-2" }],
+      }),
+    );
+    assert.equal(d.ok, true);
+    if (!d.ok) return;
+    assert.equal(d.groups.find((g) => g.label === "我的食物库")?.count, 2);
+  });
+
+  it("customFoods 与别的键**无子串重叠**，不会被误判成别的分组", () => {
+    const d = describeBackupDetail(backupText({ [KEYS.customFoods]: [{ id: "user-1" }] }));
+    assert.equal(d.ok, true);
+    if (!d.ok) return;
+    const others = d.groups.filter((g) => g.label !== "我的食物库" && g.count > 0);
+    assert.deepEqual(others, [], "customFoods 只该被「我的食物库」认领");
+  });
+
   it("AI Key 以**实际内容**为准，不看那个导出时写的字段", () => {
     const d = describeBackupDetail(
       backupText({ [KEYS.apikeys]: { deepseekKey: "sk-x" } }, { includesApiKey: false }),
