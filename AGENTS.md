@@ -25,9 +25,33 @@
 > 0.x 阶段那句「做完了直接提交推 main」**已经失效**，从此刻起每次改动都走分支。
 
 - 分支命名：`feat/<简短名字>` / `fix/<简短名字>` / `docs/<简短名字>`
+  —— ⚠️ **但这套带斜杠的名字在本机建不出来，见下方红框，以红框为准。**
 - 一律从**最新 `main`** 切出；**一次分支只做一件事**，不把不相关的改动混进去
 - 推分支 → 把结论告诉用户 → **用户确认** → 才 merge 回 `main` → 再推 `main`
 - merge 用 `--no-ff`；**不改写 `main` 历史**（不 rebase、不 force push）
+
+> ### 🔴 本机建不了带斜杠的分支名（2026-09-19 实测踩过一次，会静默断链）
+>
+> **现象**：`refs/heads/` 下**创建子目录会静默失败**。
+> `git branch feat/x`、`git checkout -b feat/x`、`git update-ref refs/heads/feat/x <sha>`
+> **全部返回退出码 0，但 ref 根本不存在** —— `git show-ref refs/heads/feat/x` 查不到，
+> `ls .git/refs/heads/` 里也没有 `feat/` 目录。
+>
+> **已排除**：`.git/config` 完全正常（无 filter / 无 hooksPath / 无异常 extension）；
+> 扁平名字（`feat-x`）正常；**手写 ref 文件**正常；`refs/remotes/origin/feat/pick-dish`
+> 这种嵌套 ref 是**以前**留下的、仍能读，但**新建不出来**。
+>
+> **为什么危险**：`git checkout -b feat/x` 会把 `HEAD` 指向一个**不存在的 ref**。
+> 于是**下一个提交会变成没有父提交的 `commit (initial)`（孤儿提交）**，
+> 与 `main` 的历史彻底断链 —— 表面上一切正常，只有 `git rev-list --parents -n1 <sha>`
+> 或 reflog 里的 `commit (initial)` 字样能看出来。这次就是这么发现的。
+>
+> **规矩**：
+> 1. **本机一律用扁平名**：`feat-x` / `fix-x` / `docs-x`（上面那行带斜杠的命名是原定约定，
+>    在本机跑不通）
+> 2. 建完分支**立刻自证**：`git show-ref refs/heads/<名字>` 有输出才算建成
+> 3. 切完分支**再自证一次**：`git rev-parse HEAD` 必须能解析出提交、且
+>    `git rev-parse HEAD^` 指向预期的父提交
 
 ### 日常开发
 
