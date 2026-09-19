@@ -17,6 +17,15 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.1.0",
+    date: "2026-09-19",
+    highlights: [
+      "有新版本时会告诉你：网页版点一下就更新，安卓 App 点一下下载新的安装包（记录不会丢）",
+      "打开时多了一小段启动动画：那个进度环自己画出来 —— 点一下就能跳过",
+      "「稍后」不再等于永远不提示：只对这一个版本生效，下个版本照样告诉你",
+    ],
+  },
+  {
     version: "1.0.0",
     date: "2026-09-19",
     highlights: [

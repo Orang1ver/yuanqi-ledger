@@ -1551,6 +1551,277 @@ async function checkAiPick(page, baseUrl, failures) {
   }
 }
 
+// ---------- 启动动画 ----------
+
+/**
+ * 冷启动那层品牌遮罩。
+ *
+ * 三件事，顺序就是重要性：
+ *
+ * 1) **它在服务端渲染的 HTML 里** —— 这才是它存在的理由：盖住"HTML 到了、React 还没水合"
+ *    那段白屏。放进客户端组件就晚了，而这一点**光看渲染出来的页面看不出来**，
+ *    所以直接抓 HTML 文本比对。
+ * 2) **React 一挂载就把它收掉**，而且收掉之后**不可点**（`visibility: hidden`）——
+ *    一层永远盖着的装饰比白屏更糟：用户会以为卡死了。
+ * 3) **环真的在动**（有 animation），不然"启动动画"就只是一张静态图。
+ *
+ * ⚠️ 时间上必须卡在 **3.2 秒内**断言。`layout.tsx` 里那段内联脚本 4 秒后会**无条件**
+ * 把遮罩收掉（万一 React 没起来的兜底）。等过了那个点再断言，BootSplash 坏掉也照样
+ * 是 "done"，这条检查就假绿了 —— 所以这里是"跑得比兜底快"，不是随手定的秒数。
+ */
+async function checkBootSplash(page, baseUrl, failures) {
+  // 1) 先看**原始 HTML**：遮罩必须已经在里面（服务端渲染）
+  const html = await (await fetch(`${baseUrl}/?boot=${Date.now()}`)).text();
+  const inHtml = html.includes('id="yq-boot"') && html.includes("yq-boot-ring");
+
+  await goto(page, `${baseUrl}/?boot2=${Date.now()}`);
+
+  const r = await evaluate(
+    page,
+    `(async () => {
+      const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+      const el = () => document.getElementById("yq-boot");
+      if (!el()) return { ok: false, why: "页面上没有 #yq-boot" };
+
+      // 从"导航开始"算起的时间，和那段 4 秒兜底同一个时间轴
+      let hiddenAt = null;
+      while (performance.now() < 3200) {
+        if (getComputedStyle(el()).visibility === "hidden") {
+          hiddenAt = Math.round(performance.now());
+          break;
+        }
+        await sleep(60);
+      }
+      const ring = document.querySelector(".yq-boot-ring");
+      return {
+        ok: true,
+        boot: document.documentElement.dataset.boot || "",
+        visibility: getComputedStyle(el()).visibility,
+        hiddenAt,
+        anim: ring ? getComputedStyle(ring).animationName : "(没有环)",
+      };
+    })()`,
+  );
+
+  if (!r.ok) {
+    failures.push(`启动动画：${r.why}`);
+    console.log(`✗ 启动动画没跑成：${r.why}`);
+    return;
+  }
+
+  const hiddenInTime = r.visibility === "hidden" && r.hiddenAt !== null && r.hiddenAt < 3200;
+  const animated = r.anim !== "none" && r.anim !== "(没有环)";
+  const ok = inHtml && hiddenInTime && animated;
+
+  console.log(
+    `${ok ? "✓" : "✗"} 启动动画：遮罩在服务端 HTML 里=${inHtml}；` +
+      `${r.hiddenAt === null ? "一直没收起" : `${r.hiddenAt}ms 收起`}（data-boot=${r.boot || "（空）"}）；` +
+      `环的动画=${r.anim}`,
+  );
+  if (!inHtml) {
+    failures.push(
+      "启动遮罩不在服务端渲染的 HTML 里 —— 那样它盖不住水合前的白屏，等于没有",
+    );
+  }
+  if (!hiddenInTime) {
+    failures.push(
+      `启动遮罩没有在 3.2 秒内收起来（hiddenAt=${r.hiddenAt}，visibility=${r.visibility}）—— ` +
+        "要么 BootSplash 没把 data-boot 写上，要么写完没生效",
+    );
+  }
+  if (!animated) {
+    failures.push(`启动遮罩的环没有动画（animation-name=${r.anim}）—— "启动动画"成了一张静态图`);
+  }
+}
+
+// ---------- 应用内更新 ----------
+
+/**
+ * 「有新版本」这条横幅 —— 它有两种完全不同的行为，必须**分别**验：
+ *
+ * - **网页版**：点「立即更新」清缓存重进（资源在服务器上）。
+ * - **安卓壳**：点「下载新版」去下新的安装包（壳里的资源是打包进去的，刷新没用）。
+ *   壳的环境用 `window.Capacitor.isNativePlatform()` 判（Capacitor 的原生桥会挂这个），
+ *   所以这里**在文档脚本之前**把它 stub 上，逼应用走壳里那条路。
+ *
+ * 还有两件容易漏的：
+ *  - **同版本不该打扰**：远端版本等于当前版本时必须没有横幅（否则每次打开都弹）。
+ *  - **「稍后」只对该版本生效**：记的是版本号不是一个布尔 —— 记布尔的话，
+ *    用户点过一次「稍后」，以后任何新版本都不再提示，这个功能就只有第一次有效。
+ *
+ * ⚠️ 这里全程**不点**「立即更新」：那会真的清缓存并刷新，后面的检查就跑在另一个文档上了。
+ */
+async function checkAppUpdate(page, baseUrl, failures) {
+  const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
+  const current = pkg.version;
+  const parts = current.split(".");
+  const fake = `${parts[0]}.${parts[1]}.${Number(parts[2] ?? 0) + 1}`;
+  const DEFER_KEY = "recipe.updateDeferredVersion.v1";
+  /**
+   * ⚠️ 老的那个布尔键**也要清**：样例数据（`fixtures/legacy-v1.json`）里它是 `true`，
+   * 而迁移逻辑把"老键为 true"读成"当前这个版本已被推迟"——
+   * 于是"同版本不该弹"那句会**因为前置数据而永远成立**，把版本比较整个删掉都抓不住。
+   * 这是地雷 18 的老毛病（前置要自己造），自证时就是这么暴露的。
+   */
+  const OLD_KEY = "recipe.updateBannerDismissed.v1";
+  const clearDefer = `(() => {
+    localStorage.removeItem(${JSON.stringify(DEFER_KEY)});
+    localStorage.removeItem(${JSON.stringify(OLD_KEY)});
+  })()`;
+
+  const bannerText = `(() => { const b = document.querySelector('[data-yq="update-banner"]'); return b ? b.innerText : null; })()`;
+
+  /** 在文档脚本之前塞：假的 version.json + 记录 window.open 的调用 */
+  async function installStub({ native, version }) {
+    const source = `
+      (() => {
+        const realFetch = window.fetch.bind(window);
+        window.fetch = function (input, init) {
+          const url = typeof input === "string" ? input : (input && input.url) || "";
+          if (url.includes("version.json")) {
+            return Promise.resolve(new Response(JSON.stringify({
+              version: ${JSON.stringify(version)},
+              apk: ${JSON.stringify(`apk/yuanqi-ledger-${version}.apk`)},
+            }), { status: 200, headers: { "Content-Type": "application/json" } }));
+          }
+          return realFetch(input, init);
+        };
+        window.__yqOpened = [];
+        window.open = function (u) { window.__yqOpened.push(String(u)); return null; };
+        ${native ? "window.Capacitor = { isNativePlatform: () => true };" : ""}
+      })();
+    `;
+    const res = await page.send("Page.addScriptToEvaluateOnNewDocument", { source });
+    ids.push(res.identifier);
+  }
+
+  /** 每换一种场景都要把上一个 stub 撤掉 —— 两个都留着的话，后者会被前者抢先拦下 */
+  async function removeStubs() {
+    for (const id of ids.splice(0, ids.length)) {
+      try {
+        await page.send("Page.removeScriptToEvaluateOnNewDocument", { identifier: id });
+      } catch {
+        /* 清理失败不影响结果（地雷 17 的同一条道理） */
+      }
+    }
+  }
+
+  const ids = [];
+  try {
+    /*
+     * ---- 1) 同版本：不该出现横幅 ----
+     *
+     * ⚠️ 这里**必须自己喂一个"同版本"的 version.json**。
+     * 一开始我依赖"普通构建的 out/ 里没有 version.json"来制造这个场景 ——
+     * 那样 `fetchRemoteVersion` 返回 null、"不弹"是**顺带成立**的，
+     * 把版本比较整个删掉这条断言也照样绿（自证时真的没抓到破坏）。
+     * 自己喂了之后，"同版本还弹"才会被抓住。
+     */
+    await evaluate(page, clearDefer);
+    await installStub({ native: false, version: current });
+    await goto(page, `${baseUrl}/?upd=${Date.now()}`);
+    await new Promise((r) => setTimeout(r, 400)); // 给 check() 一点时间跑完
+    const quiet = await evaluate(page, bannerText).then((t) => t === null);
+
+    // ---- 2) 网页版：塞一个更新的版本 → 应当出现「立即更新」 ----
+    await removeStubs();
+    await installStub({ native: false, version: fake });
+    await goto(page, `${baseUrl}/?upd2=${Date.now()}`);
+    let text = null;
+    for (let i = 0; i < 30 && !text; i += 1) {
+      text = await evaluate(page, bannerText);
+      if (!text) await new Promise((r) => setTimeout(r, 100));
+    }
+    const webReload = await evaluate(
+      page,
+      `Boolean(document.querySelector('[data-yq="update-reload"]'))`,
+    );
+
+    // ---- 3)「稍后」只对该版本生效 ----
+    const later = await evaluate(
+      page,
+      `(() => {
+        const b = document.querySelector('[data-yq="update-later"]');
+        if (!b) return { ok: false };
+        b.click();
+        return { ok: true, stored: localStorage.getItem(${JSON.stringify(DEFER_KEY)}) };
+      })()`,
+    );
+    // 同一个版本再进一次：不该再提示（否则「稍后」形同虚设）
+    await goto(page, `${baseUrl}/?upd3=${Date.now()}`);
+    const againSameVersion = await evaluate(page, bannerText);
+
+    // ---- 4) 壳里：同一个更新，按钮应当变成「下载新版」，并去下安装包 ----
+    await evaluate(page, clearDefer);
+    await removeStubs();
+    await installStub({ native: true, version: fake });
+    await goto(page, `${baseUrl}/?upd4=${Date.now()}`);
+    let nativeText = null;
+    for (let i = 0; i < 30 && !nativeText; i += 1) {
+      nativeText = await evaluate(page, bannerText);
+      if (!nativeText) await new Promise((r) => setTimeout(r, 100));
+    }
+    const downloaded = await evaluate(
+      page,
+      `(async () => {
+        const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+        const b = document.querySelector('[data-yq="update-download"]');
+        if (!b) return { ok: false };
+        b.click();
+        await sleep(400);
+        return { ok: true, opened: window.__yqOpened || [] };
+      })()`,
+    );
+
+    const apkUrl = Array.isArray(downloaded.opened) ? downloaded.opened[0] || "" : "";
+    const apkOk = apkUrl.includes(`apk/yuanqi-ledger-${fake}.apk`);
+
+    // ⚠️ 存进去的是 JSON（`writeJSON`），读回来是带引号的字符串 —— 拿裸版本号比会永远不等
+    const deferredOk = later.stored === JSON.stringify(fake);
+
+    const ok =
+      quiet &&
+      Boolean(text) &&
+      text.includes(fake) &&
+      webReload &&
+      later.ok &&
+      deferredOk &&
+      againSameVersion === null &&
+      Boolean(nativeText) &&
+      Boolean(downloaded.ok) &&
+      apkOk;
+
+    console.log(
+      `${ok ? "✓" : "✗"} 应用内更新：同版本静默=${quiet}；网页版横幅=${Boolean(text)}（含 ${fake}=${Boolean(text && text.includes(fake))}）` +
+        `、显示「立即更新」=${webReload}；点「稍后」记下 ${later.stored}；同版本再进不再提示=${againSameVersion === null}；` +
+        `壳里横幅=${Boolean(nativeText)}、点「下载新版」打开的地址=${apkUrl || "（没打开）"}`,
+    );
+
+    if (!quiet) failures.push("远端版本与当前相同却弹了更新横幅 —— 每次打开都打扰一遍");
+    if (!text) failures.push("有一个更新的版本，网页版却没有出现更新横幅");
+    else if (!text.includes(fake)) failures.push(`更新横幅里没有写清新版本号（${fake}）：${text}`);
+    if (!webReload) failures.push("网页版的更新横幅没有「立即更新」按钮");
+    if (!later.ok) failures.push("更新横幅上没有「稍后」按钮");
+    else if (!deferredOk) {
+      failures.push(
+        `点「稍后」之后记下的是 ${later.stored}（期望 ${JSON.stringify(fake)}）—— 记布尔的话以后任何新版本都不再提示`,
+      );
+    }
+    if (againSameVersion !== null) {
+      failures.push(`同一个版本点过「稍后」之后又弹了一次：${againSameVersion}`);
+    }
+    if (!nativeText) failures.push("壳里（isNativePlatform）没有出现更新横幅 —— 安卓那边就永远收不到更新");
+    if (!downloaded.ok) failures.push("壳里的更新横幅没有「下载新版」按钮");
+    else if (!apkOk) {
+      failures.push(`壳里点「下载新版」打开的地址不对：${apkUrl || "（没打开）"}`);
+    }
+  } finally {
+    await removeStubs();
+    // 把 defer 键清掉，别影响后面的检查
+    await evaluate(page, clearDefer).catch(() => {});
+  }
+}
+
 // ---------- 按需拉起预览服务 ----------
 //
 // 冒烟测试依赖一个静态服务把 out/ 挂在子路径下。要求人先手动起服务，
@@ -1860,6 +2131,12 @@ try {
 
   // 这一条会**覆盖**菜单库与饮食记录（前置自己造），必须排在最后
   await checkAiPick(page, BASE_URL, failures);
+
+  // 最后两条只重载 / 并动一个「更新提示」的开关，不碰任何用户数据
+  await checkBootSplash(page, BASE_URL, failures);
+
+  // 这一条会 stub window.fetch / window.Capacitor（用完自己清掉），放最后免得影响别人
+  await checkAppUpdate(page, BASE_URL, failures);
 
   if (failures.length) {
     console.log(`\n✗ ${failures.length} 个页面没显示出应有的内容（数据来源：${seedLabel}）：`);

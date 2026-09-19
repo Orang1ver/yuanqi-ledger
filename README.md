@@ -127,9 +127,50 @@ powershell -ExecutionPolicy Bypass -File scripts/android/setup-sdk.ps1
 - **图标要单独重铺**。`cap sync` 只管 `assets/public`，不会动 `android/app/src/main/res/`。
   改了主题色或 `scripts/make-icons.py` 之后，先 `npm run icons` 再打包。
 
+### 发版顺序（**先打包装包，再发布**）
+
+```bash
+npm run android:apk        # 1) 打出 dist/yuanqi-ledger-<版本>.apk
+node scripts/deploy.mjs    # 2) 发布网页版 + version.json + 把安装包放到站点上
+```
+
+第 2 步会把安装包放到站点的 `/apk/` 下，并写一份 **`version.json`**：
+
+```json
+{ "version": "1.1.0", "apk": "apk/yuanqi-ledger-1.1.0.apk", "site": "https://orang1ver.github.io/yuanqi-ledger" }
+```
+
+**这份文件就是「应用内更新」的接口** —— 网页版和安卓 App 都来问它"最新是哪个版本"。
+顺序反了的话网页版照样能更新，但**安卓 App 收不到更新提示**（脚本会警告一句，别忽略）。
+
+### 应用内更新是怎么工作的
+
+两边的更新方式**根本不同**，这不是实现偷懒，是平台就这样：
+
+| | 网页版 | 安卓 App |
+|---|---|---|
+| 资源在哪 | 服务器上 | **打包在安装包里** |
+| 提示什么 | 「发现新版本 v1.1.0，刷新即可用上」 | 「有新版本 v1.1.0，下载新的安装包就能用上」 |
+| 点了做什么 | 清掉离线缓存 + 重新进入 | 跳浏览器下载新包，点开装一次 |
+| 数据 | 不动（数据在 localStorage） | 不动（同一个包名与签名，覆盖安装） |
+
+- 检查时机三个：打开、从后台回到前台、网络恢复。
+- **壳里必须知道线上站点的绝对地址**：`location.origin` 在壳里是 `https://localhost`，
+  拿它去拼"哪里能下到新包"是下不动的（见 `lib/update.ts` 的 `REMOTE_SITE`）。
+- ⚠️ 安卓**不允许** App 给自己静默升级（除非走应用商店的更新接口），
+  所以这一步必须用户点一下 —— 不是没做完。
+- 「稍后」记的是**版本号**，只对那一个版本生效；下一个版本照样提示。
+
 > iOS 那边**不需要另做一个包**：这个 App 在 iPhone 上就是"添加到主屏幕"的 PWA，
 > 安装引导与更新机制都是现成的（见 `IOSInstallHint.tsx` 与 `public/sw.js`）。
 > 要上 App Store 得有一台 Mac + Xcode，那是另一件事。
+
+### 启动动画
+
+冷启动时盖一层品牌遮罩（环自己画出来 + 品牌名淡入，约 0.4 秒后淡出），
+它**在服务端渲染的 HTML 里** —— 盖住的正是"HTML 到了、React 还没水合"那段白屏。
+三个出口：正常收掉 / **点一下立刻跳过** / 4 秒硬兜底（React 万一没起来）。
+与安卓启动图同形状，且尊重系统的"减弱动效"设置。
 
 ## 五道闸门
 

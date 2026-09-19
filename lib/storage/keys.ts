@@ -48,8 +48,19 @@ export const KEYS = {
    * 与 iOS 那个同一个性质：**应用元数据**，不进 `describeBackup` 的导入预览。
    */
   androidInstallHintDismissed: "recipe.androidInstallHintDismissed.v1",
-  /** 更新提示是否已关闭 */
+  /** 更新提示是否已关闭（老键：布尔。新代码改用下面那个记版本号的键） */
   updateBannerDismissed: "recipe.updateBannerDismissed.v1",
+  /**
+   * 「这次先不更新」记的是**哪一个版本**，不是一个布尔。
+   *
+   * ⚠️ 为什么不用布尔：布尔只有"永远不再提示"这一种语义 ——
+   * 用户点了一次「稍后」，以后**任何**新版本都不会再告诉他，
+   * 那这个"应用内更新"就等于只有第一次有效。记版本号之后，
+   * 「稍后」只对**这一个版本**生效，出下一个版本照样提示。
+   *
+   * 与 `updateBannerDismissed` 同一个性质：**应用元数据**，不进导入预览。
+   */
+  updateDeferredVersion: "recipe.updateDeferredVersion.v1",
   /** 饮食日记（元气账本新增） */
   dietLog: "recipe.dietLog.v1",
   /**
