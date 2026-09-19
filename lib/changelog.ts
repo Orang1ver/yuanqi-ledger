@@ -17,6 +17,15 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.3.0",
+    date: "2026-09-19",
+    highlights: [
+      "安卓 App 可以「不换安装包」更新了：新版在后台下好，设置里点一下「立即更新」就切过去 —— 不用再去下载安装包，记录也不会丢",
+      "设置里多了一栏「无感更新」：看得见当前跑的是安装包内版本还是更新版，也可以随时手动检查",
+      "万一新版本起不来，App 会自己退回上一版，不用重装",
+    ],
+  },
+  {
     version: "1.2.0",
     date: "2026-09-19",
     highlights: [
