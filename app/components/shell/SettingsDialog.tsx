@@ -208,7 +208,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
         {/* AI Key */}
         <section style={{ marginBottom: 18 }}>
           <p className="yq-label" style={{ marginBottom: 8 }}>
-            AI 接口 Key（推荐与建议用，可留空）
+            AI 接口 Key（推荐、建议与<b>拍照识别</b>用，可留空）
           </p>
           <input
             className="yq-input"
@@ -238,6 +238,13 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
           <p className="yq-hint" style={{ marginTop: 6 }}>
             纯前端应用，Key 只存在你这台设备的浏览器里，不会上传到任何服务器。
             但请理解：<b>它也会随备份文件一起被导出</b>（导出时可选择不含 Key）。
+          </p>
+          <p className="yq-hint" style={{ marginTop: 6 }}>
+            <b>唯一的例外是拍照识别</b>：用「拍照认食物」时，
+            <b>那张照片会上传到 DeepSeek 读一次</b>，用来认成分表上的字 ——
+            这是本应用唯一会离开本机的数据。<b>读完即弃，本机不留原图</b>；
+            除此之外，你的健康档案、体重、饮食记录<b>全程只存在本机</b>。
+            不想有任何照片出本机，就别用拍照入口，其余功能不受影响。
           </p>
         </section>
 
