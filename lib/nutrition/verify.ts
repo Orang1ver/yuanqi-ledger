@@ -89,11 +89,6 @@ export function energyClosure(v: {
   return { expected, diffRatio, ok: diffRatio <= CLOSURE_OK_RATIO };
 }
 
-/** NRV 反算：含量 ÷ 基准 × 100，应该约等于图上标的 NRV% */
-function nrvExpect(pct: number, base: number): number {
-  return (pct / 100) * base;
-}
-
 /**
  * 用国标基准核对图上标的 NRV%。
  *

@@ -24,6 +24,9 @@
 
 import { v4 as uuid } from "uuid";
 import type { FoodItem } from "../nutrition/types";
+// ⚠️ 只导 `normalize` 这一个**纯函数**，不是整库 JSON ——
+// 它住在 library.ts 里但本身不碰 JSON，把它复用过来不会牵进几百条数据。
+import { normalize } from "../nutrition/library";
 import { KEYS } from "./keys";
 import { readJSON, writeJSON } from "./io";
 
@@ -37,11 +40,6 @@ import { readJSON, writeJSON } from "./io";
  * 到这儿还没到顶说明用法出问题了（比如误把整库导进来）。
  */
 export const CUSTOM_FOODS_LIMIT = 500;
-
-/** 归一化：去空白（含全角）+ 小写。必须与 `library.ts` 的判据保持一致 */
-function normalize(s: string): string {
-  return s.replace(/[\s\u3000]+/g, "").toLowerCase();
-}
 
 /** 名字查重的键：正式名 + 全部别名，任意一个撞上就算重复 */
 function nameKeys(food: Pick<FoodItem, "name" | "alias">): string[] {
