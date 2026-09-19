@@ -136,6 +136,29 @@ async function removeQuiet(native: NativeBits, path: string): Promise<void> {
   }
 }
 
+/**
+ * 确保某个文件所在的目录存在。
+ *
+ * ⚠️ **只有 `writeFile` 与 `mkdir` 有 `recursive` 选项，`copy` 没有** ——
+ * `CopyOptions` 里只有 `from` / `to` / `directory` / `toDirectory`，
+ * 目标目录不存在时它直接抛 `Missing parent directory … recursive=false was passed`。
+ * 增量更新要**复制**上一版里没变的文件（新目录还是空的），所以必须先自己建目录。
+ * 这个坑真踩过：第一次 OTA 时本地没有旧版本可复制、`copy` 一次都没走到，
+ * 于是等到有旧版本时才炸 —— 表现是「这次没成功：Missing parent directory…」。
+ */
+async function ensureParentDir(native: NativeBits, filePath: string, made: Set<string>): Promise<void> {
+  const i = filePath.lastIndexOf("/");
+  if (i < 0) return; // 直接放在根下的文件，没有父目录要建
+  const dir = filePath.slice(0, i);
+  if (made.has(dir)) return;
+  try {
+    await native.Filesystem.mkdir({ path: dir, directory: native.Directory.Data, recursive: true });
+  } catch {
+    /* 已存在就算了 —— 各平台对"目录已存在"的处理不一致，而我们要的只是"它在" */
+  }
+  made.add(dir);
+}
+
 type PresentIndex = {
   /** path → sha256 */
   sha: Record<string, string>;
@@ -280,6 +303,7 @@ export async function downloadOta(options: {
 
   try {
     // 1) 没变的文件：从已有目录**复制**过去，不必重新下载（这就是增量）
+    const madeDirs = new Set<string>();
     for (const f of manifest.files) {
       if (planPaths.has(f.path)) continue;
       const src = present.dir[f.path];
@@ -288,6 +312,8 @@ export async function downloadOta(options: {
         planPaths.add(f.path);
         continue;
       }
+      // ⚠️ copy 不会替我们建目标目录（它没有 recursive），必须先建
+      await ensureParentDir(native, `${tmp}/${f.path}`, madeDirs);
       await native.Filesystem.copy({
         from: `${src}/${f.path}`,
         to: `${tmp}/${f.path}`,
