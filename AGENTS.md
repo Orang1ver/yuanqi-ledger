@@ -691,6 +691,10 @@ curl -s "https://orang1ver.github.io/yuanqi-ledger/sw.js?cb=$(date +%s)" | grep 
 - **版本号唯一来源 = `package.json` 的 `version`**，递增规则见 `CHANGELOG.md` 开头。
 - 每次发版**必须同步改三处**：`package.json`、`CHANGELOG.md`（顶部加 `## [x.y.z] - 日期`）、
   `lib/changelog.ts`（数组**最前面**插入）。`scripts/deploy.mjs` 会校验前两者与第三处。
+- ⚠️ **`lib/changelog.ts` 是给用户看的**，口径与市面上的官方更新说明一致：
+  每条只讲**「新增 / 修复 / 优化」了什么、对用户有什么影响**，
+  **不讲为什么这么做** —— 根因、实现细节、内部机制一律写进 `CHANGELOG.md`。
+  不用第二人称、不用感叹号、不作主观评价；具体数值与界面上的按钮名照抄，别改写。
 - 发布：`node scripts/deploy.mjs`。
 - ⚠️ **顺序：先 `npm run android:apk`，再 `node scripts/deploy.mjs`** ——
   发布时会把 `dist/yuanqi-ledger-<版本>.apk` 放到站点的 `/apk/` 下，
