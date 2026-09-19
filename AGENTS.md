@@ -449,6 +449,39 @@ CRYPT_E_NO_REVOCATION_CHECK (0x80092012) - 吊销功能无法检查证书是否�
     **一般化的教训**：模糊匹配的每一档，都要能回答"这一档最坏会匹配到什么"。
     名字短的档（单字）已经在 20 里禁掉了，长查询那一档就是漏的那半边。
 
+38. **应用内更新是两条路，别只做一半**（2026-09-19，1.1.0）。
+    网页版和安卓壳的更新方式**根本不同**，混为一谈就会做出一个"安卓上点了没反应"的按钮：
+    - **网页版**：资源在服务器上 → 清 Cache Storage 再进（`forceRefresh`，别删那段）。
+    - **安卓壳**：资源**打包在安装包里** → **只能下载新的安装包**。
+      ⚠️ 安卓**不允许** App 给自己静默升级（除非走应用商店的更新接口），所以这一步必须用户点一下 ——
+      这不是没做完，是平台就长这样。跳浏览器用 `@capacitor/browser`（动态 import，
+      别让它进网页版的包）。
+    - 判据是 `window.Capacitor.isNativePlatform()` —— **不需要 import `@capacitor/core`**
+      （原生桥会挂这个全局），加了反而白搭一份运行时代码进网页版。
+    ⚠️ **壳里 `location.origin` 是 `https://localhost`**（Capacitor 的本地资源服务器）。
+    所以"去哪问有没有新版、去哪下安装包"**必须用一个硬编码的绝对站点地址**
+    （`lib/update.ts` 的 `REMOTE_SITE`，与 `scripts/deploy.mjs` 的 `SITE` 两处一起改），
+    用 `location.origin` 拼出来的地址在壳里是**下不动的**。
+    （GitHub Pages 会给 `Access-Control-Allow-Origin: *`，所以壳里跨域读版本文件没问题 —— 实测过。）
+    ⚠️ **发布顺序**：先 `npm run android:apk` 再 `node scripts/deploy.mjs`，
+    否则 `version.json` 里没有安装包地址（脚本会警告，不会静默漏）。
+    ⚠️ **「稍后」不能记布尔**：布尔只有"永远不再提示"一种语义，用户点过一次以后
+    **任何新版本都不再告诉他**，这个功能就只有第一次有效。要记**版本号**。
+    ⚠️ 检查时机要三个（打开 / 回前台 / 网络恢复）—— 少一个就会出现"挂着不管就永远收不到"。
+
+39. **「启动动画」的遮罩必须在服务端渲染的 HTML 里**（同一天，1.1.0）。
+    它存在的唯一理由是盖住"HTML 到了、React 还没水合"那段白屏 ——
+    放进客户端组件就晚了，那时候白屏已经闪过去了。
+    做法：标记写在 `app/layout.tsx`（服务端组件），`BootSplash` 只负责挂载后收掉
+    （设 `document.documentElement.dataset.boot = "done"`，CSS 用它隐藏 ——
+    注意是**隐藏**而不是从 DOM 里删：那个节点归 React 管，删了会让协调器困惑）。
+    ⚠️ **三个出口缺一个都可能让装饰挡住人**：正常 ~420ms 收掉 / 点一下立刻收掉 /
+    内联脚本 4 秒硬兜底（React 万一没起来，一层永远盖着的遮罩比白屏更糟）。
+    ⚠️ 形状要和**安卓启动图一致**（`drawable/splash.png`），否则手机上
+    「系统启动图 → 这一层」会看见一次跳变。
+    ⚠️ 冒烟里断言"多久收起"必须**跑在 4 秒兜底之前**（现在卡 3.2 秒）——
+    等过了兜底再断言，BootSplash 坏掉也照样是 done，检查就假绿了。
+
 ---
 
 ## 5. 验证要求（用户要求讲清"怎么验证的"）
@@ -464,7 +497,7 @@ python scripts/verify-subpath.py                                # 子路径点�
 
 ```bash
 npm run check:data        # 既有结构的数据还读得出来吗
-npm run smoke             # 真实浏览器里真的画出来了吗（5 个页面）
+npm run smoke             # 真实浏览器里真的画出来了吗（5 个页面 + 15 个定向交互检查）
 npm run check:nutrition   # 食物库算术自洽吗 + 每条食物有没有份量规则 + 具体规则有没有被泛化规则挡住
 npm run check:reference   # 抄来的数值有没有台账；按配方估算的能不能重算回去
 npm test                  # 营养层与数据层语义对吗（无数据≠0、快照、数字只能来自一次乘法）
@@ -491,6 +524,13 @@ curl -s "https://orang1ver.github.io/yuanqi-ledger/sw.js?cb=$(date +%s)" | grep 
 - 每次发版**必须同步改三处**：`package.json`、`CHANGELOG.md`（顶部加 `## [x.y.z] - 日期`）、
   `lib/changelog.ts`（数组**最前面**插入）。`scripts/deploy.mjs` 会校验前两者与第三处。
 - 发布：`node scripts/deploy.mjs`。
+- ⚠️ **顺序：先 `npm run android:apk`，再 `node scripts/deploy.mjs`** ——
+  发布时会把 `dist/yuanqi-ledger-<版本>.apk` 放到站点的 `/apk/` 下，
+  并写一份 `version.json` 给「应用内更新」用（见地雷 38）。
+  少了这一步，网页版照常能更新，但**安卓壳收不到更新提示** —— 脚本会警告，别忽略。
+- ⚠️ **在 worktree 里改过 `package.json`（加了依赖）之后，合并回主目录要先 `npm install`** ——
+  依赖没进主目录的 `node_modules` 时，`next build` 会**因为解析不到那个 import 而直接失败**
+  （动态 import 也一样会被解析）。worktree 有自己的 `node_modules`，不会自动同步。
 
 ---
 
@@ -515,6 +555,9 @@ curl -s "https://orang1ver.github.io/yuanqi-ledger/sw.js?cb=$(date +%s)" | grep 
 | 数据读写 | `lib/storage/`（`io.ts` 原语、`health.ts`/`meals.ts`/`takeout.ts` 领域、`backup.ts` 备份） |
 | **久未备份提醒（阈值 / 静默期 / 何时该提醒）** | `lib/storage/backupReminder.ts` |
 | **「装到桌面」提示（iOS 手动教 / 安卓调系统安装）** | `app/components/shell/IOSInstallHint.tsx`、`AndroidInstallHint.tsx` |
+| **应用内更新（网页版清缓存 / 壳里下载安装包）** | `lib/update.ts`、`app/components/shell/UpdateBanner.tsx` |
+| **版本文件与安装包从哪来（发布时生成）** | `scripts/deploy.mjs` 的 `version.json` + `out/apk/` |
+| **启动动画（遮罩在服务端 HTML 里）** | `app/components/shell/BootSplash.tsx` + `app/layout.tsx` + `app/globals.css` |
 | **导入预览 + 「整份覆盖」的撤销快照** | `app/components/shell/ImportPreview.tsx`、`lib/storage/backup.ts` |
 | 健康计算（BMR/TDEE/目标） | `lib/health.ts` |
 | 喝水与步数换算 | `lib/steps.ts` |

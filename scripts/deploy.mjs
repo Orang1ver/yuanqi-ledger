@@ -1,15 +1,22 @@
 /**
  * 一键发布。
  *
- * 做四件事：
+ * 做五件事：
  *   1) 校验版本一致性（package.json / CHANGELOG.md / lib/changelog.ts 三处必须同步）
  *   2) 以正确的 BASE_PATH 构建静态产物
  *   3) **给 out/sw.js 注入版本号与构建号** —— 源码里是占位符，注入后缓存名才会变，
  *      浏览器才会认为 SW 更新了、才会清掉旧缓存（详见 public/sw.js 的注释）
- *   4) 把 out/ 推到 gh-pages 分支，并给源码打 tag
+ *   4) **发一个 `version.json`**，并把已经打好的安卓安装包一起放到站点上 ——
+ *      这是「应用内更新」的接口：网页版和安卓壳都来问它"现在最新是哪个版本"
+ *   5) 把 out/ 推到 gh-pages 分支，并给源码打 tag
  *
  * 为什么必须第 3 步：如果 SW 文件字节不变，浏览器永远不会更新它，
  * 用户（尤其是 iOS 主屏 App）会一直卡在旧版本上。这是本项目历史上最难查的一类问题。
+ *
+ * 为什么有第 4 步：**安卓壳里的资源是打包进 APK 的**，SW 永远说不了"有新版本"。
+ * 壳里唯一的更新线索就是比版本号，然后去下载新的安装包。
+ * ⚠️ 顺序：**先 `npm run android:apk` 再发布**，否则 version.json 里没有安装包地址
+ * （脚本会明确警告一句，不会静默漏掉）。
  *
  * 用法：
  *   node scripts/deploy.mjs                 # 正常发布
@@ -24,17 +31,24 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { copyFileSync, mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const OUT = join(ROOT, "out");
+const DIST = join(ROOT, "dist");
 const DRY = process.argv.includes("--dry");
 const BASE_PATH = process.env.BASE_PATH || "/yuanqi-ledger";
 const REMOTE = process.env.DEPLOY_REMOTE || "origin";
 const BRANCH = "gh-pages";
+
+/**
+ * 线上站点的绝对地址 —— `lib/update.ts` 里有一份同样的常量（壳里必须知道它才能查更新）。
+ * ⚠️ 改域名时两处一起改。
+ */
+const SITE = "https://orang1ver.github.io/yuanqi-ledger";
 
 // 环境差异走这里进来，不写进仓库配置：见文件头的用法说明。
 const GIT_EXTRA = (process.env.DEPLOY_GIT_CONFIG || "").trim().split(/\s+/).filter(Boolean);
@@ -103,6 +117,35 @@ if (!existsSync(join(OUT, ".nojekyll"))) {
   console.error("✗ out/.nojekyll 缺失 —— GitHub Pages 会忽略 _next/ 导致白屏");
   process.exit(1);
 }
+
+// ---------- 3b. 应用内更新：version.json + 安装包 ----------
+
+/*
+ * 网页版与安卓壳都来问这个文件「最新是哪个版本」。
+ * 壳里尤其需要它：APK 里的资源是打包进去的，SW 永远说不了"有新版本"。
+ *
+ * 安装包从 dist/ 拿（`npm run android:apk` 的产物），放到站点的 /apk/ 下。
+ * ⚠️ gh-pages 每次是**整体强推**，所以旧版本的安装包不会堆积 —— 站点上永远只有当前这一版。
+ */
+const apkName = `yuanqi-ledger-${version}.apk`;
+const apkSrc = join(DIST, apkName);
+let apkField = null;
+if (existsSync(apkSrc)) {
+  const apkDir = join(OUT, "apk");
+  mkdirSync(apkDir, { recursive: true });
+  copyFileSync(apkSrc, join(apkDir, apkName));
+  apkField = `apk/${apkName}`;
+  console.log(`▶ 安装包已放进站点：apk/${apkName}（${(readFileSync(apkSrc).length / 1048576).toFixed(1)}MB）`);
+} else {
+  console.warn(
+    `⚠ dist/${apkName} 不存在 —— 这次不会发布安装包，安卓壳收不到更新提示。\n` +
+      `  想发的话：先 npm run android:apk，再重新跑一次发布。`,
+  );
+}
+
+const versionInfo = { version, build: buildId, site: SITE, apk: apkField, at: new Date().toISOString() };
+writeFileSync(join(OUT, "version.json"), JSON.stringify(versionInfo, null, 2) + "\n");
+console.log(`▶ version.json：${JSON.stringify(versionInfo)}`);
 
 if (DRY) {
   console.log("\n✓ dry-run 完成，产物在 out/（未推送）");

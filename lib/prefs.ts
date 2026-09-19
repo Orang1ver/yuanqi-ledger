@@ -74,3 +74,23 @@ export function loadDismissed(key: DismissibleKey): boolean {
 export function dismiss(key: DismissibleKey): void {
   writeJSON(key, true);
 }
+
+/**
+ * 「这次先不更新」—— 记的是**哪个版本**被推迟了，而不是一个布尔。
+ *
+ * ⚠️ 老键 `updateBannerDismissed` 存布尔，语义是"永远不再提示"；
+ * 那个语义会让「稍后」变成一次性买断：用户点过一次，**以后任何新版本都不再告诉他** ——
+ * 那这个"应用内更新"就只有第一次有效。所以新代码读写这个字符串键，只对同一个版本闭嘴。
+ *
+ * 迁移：老键为 true 且新键为空时，把**当前正在跑的版本**记成已推迟 ——
+ * 用户的意图是"别再拿这个版本烦我"，所以下一个版本照样提示。
+ */
+export function loadDeferredVersion(currentVersion: string): string {
+  const stored = readJSON<string>(KEYS.updateDeferredVersion, "");
+  if (typeof stored === "string" && stored) return stored;
+  return loadDismissed(KEYS.updateBannerDismissed) ? currentVersion : "";
+}
+
+export function deferVersion(version: string): void {
+  writeJSON(KEYS.updateDeferredVersion, version);
+}

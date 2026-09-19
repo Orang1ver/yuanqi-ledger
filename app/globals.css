@@ -467,6 +467,74 @@ input[type="number"] {
   border-bottom: none;
 }
 
+/* ---------- 启动动画 ---------- */
+
+/*
+ * 冷启动时先盖一层品牌动画，React 一挂载就淡出（见 BootSplash.tsx）。
+ *
+ * ⚠️ 这一层是**服务端渲染在 HTML 里**的，不是客户端组件画出来的 ——
+ * 放客户端就晚了：那时候白屏已经闪过去了，而它存在的唯一理由就是盖住那段白屏。
+ *
+ * ⚠️ 遮罩里的标记刻意和安卓启动图（`drawable/splash.png`）长得一样：
+ * 手机上会依次出现「系统启动图 → 这一层 → 应用」，形状不一致就会看见一次跳变。
+ *
+ * ⚠️ 环的静态值就是**画好的**（`stroke-dashoffset: 0`），动画只负责"从未画到画好"。
+ * 这样 `prefers-reduced-motion`（文件末尾那条全局覆盖）把动画压成 0.01ms 时，
+ * 落在的是"画好"这一端，而不是一个空环 —— 减弱动效的人看到的仍是完整标记。
+ */
+#yq-boot {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  background: var(--yq-bg);
+  transition:
+    opacity 220ms ease,
+    visibility 220ms ease;
+}
+
+/* 收掉之后必须**不可点**（visibility 同时解决了"挡住界面"和"点得到"） */
+html[data-boot="done"] #yq-boot {
+  opacity: 0;
+  visibility: hidden;
+}
+
+.yq-boot-ring {
+  stroke-dashoffset: 0;
+  animation: yq-boot-draw 760ms cubic-bezier(0.33, 0, 0.2, 1) both;
+}
+
+@keyframes yq-boot-draw {
+  from {
+    stroke-dashoffset: 157.08; /* 300° 的弧长，等于"还没画" */
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.yq-boot-name {
+  font-size: 15px;
+  letter-spacing: 0.18em;
+  color: var(--yq-primary);
+  animation: yq-boot-rise 460ms ease 320ms both;
+}
+
+@keyframes yq-boot-rise {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 /* 减弱动效偏好 */
 
 @media (prefers-reduced-motion: reduce) {
