@@ -24,6 +24,7 @@
     "@capacitor/android": "^7.6.9",
     "@capacitor/browser": "^7.0.5",
     "@capacitor/core": "^7.6.9",
+    "@capacitor/filesystem": "^7.1.8",
     "canvas-confetti": "^1.9.4",
     "motion": "^13.2.0",
     "next": "16.2.9",

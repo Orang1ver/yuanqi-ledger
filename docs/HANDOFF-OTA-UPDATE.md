@@ -125,6 +125,36 @@
 **spike 的产出是结论，不是代码** —— 结果写回本文档，再决定往下走。
 ⚠️ 如果 1 或 2 失败，方案 A 不成立，改走 C（并在本文档里写明为什么）。
 
+#### ✅ 步骤 0 实测结果（2026-09-19，真机 vivo V2520A / Android 16 / arm64）
+
+在分支 `feat/ota-spike` 上用一个**临时调试卡**（`app/components/dev/OtaSpikeCard.tsx`，验证完已删除）
+跑通了全部五步，真机截图判读如下：
+
+| # | 问题 | 实测结果 | 结论 |
+|---|---|---|---|
+| 1 | `registerPlugin("WebView")` 能否调用 | `getServerBasePath()` 返回 `{"path":"public"}` | ✅ **成立 —— 一行 Java 都不用写** |
+| 2 | `Directory.Data` 目录能否被服务 | 写入 `ota-spike/index.html` 后，`setServerBasePath` 指向 `/data/user/0/com.orang1ver.yuanqiledger/files/ota-spike`，**页面真的变成了那个文件** | ✅ **方案 A 路线成立** |
+| 3 | 壳里 SW 的实际行为 | `SW 注册数: 1`、`scope=https://localhost/`、`active=activated`、**`controller=https://localhost/sw.js`**、`caches=["yuanqi-v1.2.0-20260919.1553"]` | ⚠️ **SW 确实仍控制着 OTA 页面、旧缓存仍在**（危害见下） |
+
+另实测到两条对实现有直接影响的细节：
+
+- **`getServerBasePath()` 的默认值是字符串 `"public"`**，不是 `null` / 空串 ——
+  判断「当前跑的是打包资源还是 OTA 版」时**别拿 `null` 当判据**。
+- ✅ **不调 `persistServerBasePath` 时，`setServerBasePath` 只影响当前会话**：
+  `am force-stop` 后重开**干净回到打包资源**。这既给了 spike 一条安全退路，
+  也是「**先切过去试用、确认没问题再持久化**」这个实现策略的依据。
+
+**第 3 条到底会不会打架** —— 读 `public/sw.js` 的 fetch 分支后，危害比预想的小得多：
+
+- **导航请求（`req.mode === "navigate"`）走「网络优先」**（`sw.js:57-68`）→ OTA 后拿得到新 `index.html`。
+- **静态资源走「缓存优先」**（`sw.js:70-82`），但 Next.js 产物里 chunk 文件名**带内容 hash** →
+  新版本引用的是**全新 URL**，`caches.match` 天然 miss、回落网络 → **不会拿到旧 JS**。
+
+所以真正受影响的只是**不带 hash 的同名资源**（`sw.js` 自身、图标、`manifest.json` 之类），
+返回旧版基本无害。**结论：OTA 完成后仍应清一次 `yuanqi-v*` 缓存（成本极低、消除隐患），
+但不必为它设计复杂机制。** ⚠️ 这一条要在真 OTA 时用**完整产物**再确认一次，
+**别只凭这次的推理就当成结论**。
+
 ### 步骤 1 · 站点侧：发布「资源清单」
 
 `scripts/deploy.mjs` 在生成 `version.json` 时**追加一个 `ota` 字段**（老字段一个都不动）：
@@ -242,9 +272,14 @@
 
 ---
 
-## 7. ⚠️ 验收的最大障碍：**这台机器没有安卓真机，也没有模拟器**
+## 7. 验收门槛（真机）—— ✅ 已具备（2026-09-19）
 
-这条从 1.0.0 起就一直如实留着，OTA 会让它**变成硬门槛**：
+~~这台机器没有安卓真机，也没有模拟器~~ —— **已解决：真机到位，OTA 可以做真实验收**。
+设备 vivo V2520A / Android 16 / arm64，adb = `D:/Android/Sdk/platform-tools/adb.exe`；
+1.2.0 已装上并逐项验证（数据持久化、覆盖安装不丢数据、应用内更新横幅正常），
+**「APK 从未真机装过」这笔账已闭合**。
+
+保留下面这段，是为了说明**为什么真机不可替代**：
 
 - **闸门证明不了 OTA**。单测只覆盖 `lib/ota.ts` 的纯逻辑；`npm run smoke` 跑的是真实 Edge，
   里面 `window.Capacitor` 根本不存在，**OTA 那条分支永远走不到**。
@@ -258,6 +293,19 @@
 | **用户拿一台安卓手机**（推荐） | 最低 | 现在的 APK 只要 `adb install -r` 就能装；验证 OTA 也只是"装旧版 → 触发更新 → 重启看版本" |
 | 本机建 AVD | 中 | 要下系统镜像（~1.5GB）并确认 WHPX/HAXM 可用；`scripts/android/setup-sdk.ps1` 是现成的入口 |
 | 不做真机验证 | 零 | 那就**如实标注「OTA 未经真机验证」**，不要含糊 |
+
+### 真机操作要点（本次实测踩过，别重复踩）
+
+1. ⚠️ **vivo 会在 `adb install` 时弹系统确认框**，被拒时报
+   `INSTALL_FAILED_ABORTED: User rejected permissions`。**同一个包换个时机重试即可**
+   （实测第一次被拒、重试成功）。始终不行就把包 `adb push` 到 `/sdcard/Download/` 让用户手动点装。
+2. ⚠️ **WebView 里的 DOM 不给 `uiautomator` 看**（dump 出来只有一个 `WebView` 节点、`text=""`），
+   只能 `input tap x y` 坐标点击。`screencap` 出图是 1080×2376，
+   **显示坐标 ×2.209 = 设备坐标**（别按 1024 的高度算，会偏）。
+3. 抓启动日志要 `logcat -c` + `am force-stop` 后重启，否则只会看到
+   「Activity not started, its current task has been brought to the front」。
+4. `apksigner` / `aapt2` 记得 `export JAVA_HOME="D:/Android/jdk-21"`，且路径要写
+   **Unix 形式**（`/d/Android/Sdk/build-tools/34.0.0`），否则在 Git Bash 里找不到。
 
 **另：第一次带 OTA 的 APK 必须重装一次** —— 老 APK 里没有 OTA 代码，指望不上自更新。
 
