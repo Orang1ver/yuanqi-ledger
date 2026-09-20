@@ -17,6 +17,85 @@
 
 ---
 
+## [1.4.0] - 2026-09-20
+
+**拍照识别食物：把「库里没有、给不出结论」的东西补上。**
+
+起因是用户的一句话 —— 食物库里查不到的食物，app 只能回一句「没搜到」，
+而他要的是"拍一张照，AI 读出数值并加进去"。
+
+### 为什么不需要接外部 agent
+
+查证后确认：DeepSeek 开放平台**现在支持图片输入**（模型 `deepseek-flash`），
+而它的限制表（单边 ≤8192px、单图 ≤32MiB、请求体 ≤48MiB、15+ 张时降到 4096、
+每图自动缩到约 1300×1300、≤1024 tokens/图）**与地雷 6 逐字吻合** ——
+那条地雷当初就是照这份文档写的：路早就规划过，只是没接线。
+所以识图在 app 内闭环即可，不必把本机 agent 接进来。
+
+**不做直连本机 agent 的三个理由**（写下来，免得以后有人再提）：
+
+1. **手机场景不通** —— 站点是 https，请求 `http://127.0.0.1` 会被**混合内容**拦掉，
+   而且手机上那个地址是手机自己；
+2. **安全** —— 让一个公网页面能驱动"读文件、改代码、跑命令"的进程，等于开一个远程执行面；
+3. **不必要** —— agent 不可替代的只剩"写进正式库并发布"，那一环用一键预填 Issue / 邮件交接即可。
+
+### 三个刻意的取舍
+
+1. **视觉只做转录，不做估算 —— 而且不信模型自觉。**
+   prompt 要求「看不清就留空、不许推测」，但**代码层**还兜了一道：
+   `lib/ai/foodVision.ts` 在 `kind === "dish"` 时**直接抹掉所有数值字段**。
+   模型一边说"这是一道菜"一边给出热量时，那个热量进不来。
+
+2. **读到的数字要过三道校验才被允许成为数值**（`lib/nutrition/verify.ts`，纯函数）：
+   Atwater 闭合（蛋白×4 + 脂肪×9 + 碳水×4）+ NRV 反算 + 数值区间。
+   任一不过就 `reject`，**一个数字都不给**，只让用户重拍。
+   这不是洁癖：实测同一条 `10.5 g` 在低分辨率的手机照片里会被 OCR 读成 **105 g** ——
+   十倍错误，而它**看起来完全正常**，只有拿去做闭合校验才会发现 1785 ≠ 153。
+
+3. **用户食物独立于静态库。** `data/foods.zh.json` 是构建期资产，运行时改不了；
+   所以用户自己加的食物存在 `recipe.customFoods.v1`，检索时两边合并。
+   ⚠️ 合并检索 `lib/nutrition/lookup.ts` **复用 `bestNameMatch`**，一行匹配逻辑都没新写 ——
+   地雷 29 就是"闸门自己抄了一份判据、判据漂了它却全绿"，这条路上不能再有第二份判据。
+
+### 落库仍然只有一条路
+
+用户食物就是一个 `FoodItem`，落库走 `recordDietEntry({ food })` → `makeDietEntry` → `nutritionOf`，
+**没有新增任何计算路径**。刻意**不用** `recordCustomEntry` —— 它内部自己算 `per100 * k`，
+等于复制了"数字的唯一来路"。
+
+AI 估算的条目在**三处**都标出来：库条目的 `source` 写「AI 估算（仅凭外观推测，不可核对）」、
+确认页有警告卡、记账时 `DietEntry.source = "ai"`（于是当日汇总能说清"其中 N 条是猜的"）。
+
+### 踩到的坑
+
+- **Git Bash 下 `BASE_PATH` 会被 MSYS 路径转换咬。** `BASE_PATH=/yuanqi-ledger npm run build`
+  里那个路径被转成了 `D:/Git/yuanqi-ledger`，Next 直接报 `Specified basePath has to start with a /`。
+  而 `MSYS_NO_PATHCONV=1` 加在 `npm run` **前面不生效** —— npm 会再起一层 shell，变量没传下去。
+  必须写成：
+  ```bash
+  env MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' BASE_PATH=/yuanqi-ledger npx next build
+  ```
+  判据：`out/index.html` 里应当出现 122 次 `/yuanqi-ledger`。
+- **`eslint.config.mjs` 的 `globalIgnores` 没覆盖 `.tmp-*`。** 按项目约定（`.gitignore` 的
+  `/.tmp-*`）把临时脚本放 `.tmp-*` 里，会**污染 eslint 基线** —— 而本项目的基线是 0 错 0 警。
+  验收时踩到一次（一个未使用的常量就让它变成 1 warning）。
+
+### 怎么验证的
+
+九条命令全绿：`eslint` / `build` / `verify-subpath` / `check:data` / `smoke` /
+`check:nutrition` / `check:reference` / `npm test` / `check:chunks`。
+外加**三个闸门的自证模式**（`YQ_SELFTEST=1`）：`check:nutrition` 六处破坏、
+`check:reference` 两处、`check:chunks` 一处 —— 全部被对应检查拦下，证明它们不是永远绿。
+`npm test` **428/428**。
+
+**仍未实测的一环**（如实记下）：`scripts/probe-vision.mjs` 的联网部分需要 Key，
+所以 `json_object` 与图片块能否同用、`deepseek-flash` 的 thinking 模式怎么关、
+以及 `deepseek-chat` 是否仍可用，这三条目前是**按官方文档写的假设**，不是实测结论。
+⚠️ 其中第三条值得警惕：官方当前的模型表里只有 `deepseek-flash` / `deepseek-v4-pro`，
+`deepseek-chat` **不在表里**，而它仍是「帮我挑」那条路的默认模型名。
+
+---
+
 ## [1.3.3] - 2026-09-19
 
 **补录的运动记录会插到列表最前 —— 排序取的是录入时间，而不是运动日期。**
