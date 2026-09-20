@@ -226,6 +226,7 @@
     { "id": "cappuccino", "name": "卡布奇诺", "category": "drink", "unit": "ml", "kcal": 40, "protein": 2.2, "fat": 2.0, "carb": 3.2, "sodium": 35, "source": "通用成分值（按全脂奶推算）" },
     { "id": "mocha", "name": "摩卡", "category": "drink", "unit": "ml", "kcal": 80, "protein": 2.5, "fat": 3.0, "carb": 11.0, "sodium": 45, "source": "通用成分值（按含奶油与糖浆推算）" },
     { "id": "yezhi", "name": "椰汁", "alias": ["椰奶饮料"], "category": "drink", "unit": "ml", "kcal": 60, "protein": 0.6, "fat": 2.0, "carb": 9.5, "sodium": 30, "source": "通用成分值" },
+    { "id": "lemontea-yashixiang", "name": "统一双萃鸭屎香风味柠檬茶", "alias": ["鸭屎香柠檬茶", "双萃柠檬茶", "统一柠檬茶", "柠檬茶"], "category": "drink", "unit": "ml", "kcal": 36.6, "protein": 0, "fat": 0, "carb": 9.0, "sodium": 10, "source": "包装营养成分表（标示 153 kJ/100ml 换算，2026-09-19 拍照读取）" },
 
     { "id": "zicai-danhua-tang", "name": "紫菜蛋花汤", "category": "soup", "unit": "g", "kcal": 30, "protein": 2.5, "fat": 1.5, "carb": 2.0, "sodium": 800, "fiber": 0.5, "source": "按标准菜谱估算" },
     { "id": "fanqie-dan-tang", "name": "番茄蛋汤", "alias": ["西红柿鸡蛋汤"], "category": "soup", "unit": "g", "kcal": 40, "protein": 2.8, "fat": 2.2, "carb": 2.6, "sodium": 700, "source": "按标准菜谱估算" },

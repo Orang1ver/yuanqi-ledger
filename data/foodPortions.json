@@ -75,6 +75,9 @@
     { "unit": "杯", "match": ["啤酒", "红酒", "白酒", "黄酒"], "portions": [
       { "label": "一杯", "grams": 330, "range": [200, 500], "isDefault": true }
     ] },
+    { "unit": "杯", "match": ["柠檬茶", "鸭屎香"], "portions": [
+      { "label": "一杯", "grams": 500, "range": [330, 600], "isDefault": true, "note": "按 500ml 瓶装常见规格" }
+    ] },
 
     { "unit": "瓶", "match": ["可乐", "雪碧", "冰红茶", "乳酸菌", "饮料"], "portions": [
       { "label": "一瓶", "grams": 500, "range": [330, 600], "isDefault": true }
@@ -90,6 +93,9 @@
     ] },
     { "unit": "瓶", "match": ["瓶装橙汁", "瓶装绿茶", "无糖绿茶（瓶装）", "可乐", "雪碧", "冰红茶", "苏打水", "椰汁"], "portions": [
       { "label": "一瓶", "grams": 500, "range": [330, 700], "isDefault": true, "note": "常见塑料瓶装 500ml" }
+    ] },
+    { "unit": "瓶", "match": ["柠檬茶", "鸭屎香"], "portions": [
+      { "label": "一瓶", "grams": 500, "range": [330, 600], "isDefault": true, "note": "按用户实际喝的 500ml 瓶装" }
     ] },
     { "unit": "瓶", "match": ["酱油", "老抽", "蚝油", "醋", "植物油", "橄榄油"], "portions": [
       { "label": "一瓶", "grams": 500, "range": [250, 1000], "isDefault": true }

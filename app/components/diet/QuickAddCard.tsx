@@ -25,14 +25,22 @@ import { mealSlotFromTime, nowHM } from "@/lib/date";
 import { MEAL_PRESETS } from "@/lib/mealPresets";
 import type { MealPreset } from "@/lib/mealPresets";
 import { fallbackGrams, nutritionOf } from "@/lib/nutrition/core";
-import { foodById } from "@/lib/nutrition/library";
+import { bestNameMatch } from "@/lib/nutrition/library";
+import { findFoodByIdIn } from "@/lib/nutrition/lookup";
 import { defaultPortionOptions, resolveText } from "@/lib/nutrition/quickadd";
 import type { MissingReason, QuickCandidate } from "@/lib/nutrition/quickadd";
 import { categoryLabel } from "@/lib/nutrition/types";
 import type { FoodItem } from "@/lib/nutrition/types";
 import { MEAL_SLOTS } from "@/lib/tags";
 import type { MealSlot } from "@/lib/tags";
-import { frequentFoods, recordDietEntries, recordDietEntry } from "@/lib/storage";
+import {
+  frequentFoods,
+  loadCustomFoods,
+  recordDietEntries,
+  recordDietEntry,
+} from "@/lib/storage";
+import { loadApiKeys } from "@/lib/prefs";
+import { FoodPhotoSheet } from "./FoodPhotoSheet";
 import { FoodSearchDialog } from "./FoodSearchDialog";
 import { PortionChips } from "./PortionChips";
 import type { PortionValue } from "./PortionPicker";
@@ -55,14 +63,45 @@ const MISSING_BADGE: Record<MissingReason, { text: string; cls: string }> = {
   "not-found": { text: "库里没有", cls: "yq-badge-accent" },
 };
 
-function toRows(candidates: QuickCandidate[]): Row[] {
-  return candidates.map((c) => ({
-    c,
-    food: c.food,
-    gramsText: c.grams > 0 ? String(Math.round(c.grams)) : "",
-    unitLabel: c.unitLabel,
-    removed: false,
-  }));
+/**
+ * 解析结果 → 可编辑的行。
+ *
+ * ⚠️ **`not-found` 的行在这里会被"捞"一次**：`quickadd.ts` 的 `matchFood` 只认内置库
+ * （把用户库接进去会牵动 parse/quickadd 的核心判据，风险大收益小 —— 取舍见交接文档）。
+ * 所以折中：解析报「库里没有」之后，**在 UI 层拿用户库再匹配一次**，
+ * 命中就直接变成可用行。这样用户说「一杯鸭屎香柠檬茶」也能被认出来。
+ *
+ * 用的是与解析器**同一个** `bestNameMatch`（地牢 29：判据只能有一份）。
+ */
+function toRows(candidates: QuickCandidate[], extra: readonly FoodItem[]): Row[] {
+  return candidates.map((c) => {
+    let food = c.food;
+    let reason = c.reason;
+
+    if (!food && reason === "not-found" && extra.length > 0) {
+      // 拿解析出的名字（没名字就用清洗后的原句）去用户库里找
+      const probe = c.name || c.cleaned;
+      let best: { food: FoodItem; score: number } | null = null;
+      for (const f of extra) {
+        const s = bestNameMatch(f, probe).score;
+        if (s > 0 && (!best || s > best.score)) best = { food: f, score: s };
+      }
+      if (best) {
+        food = best.food;
+        // 认出来了，但份量仍然按原来的兜底逻辑走 —— 这一步只解决"是哪一种食物"，
+        // 不解决"吃了多少"（那个仍由用户确认）。
+        reason = undefined;
+      }
+    }
+
+    return {
+      c: { ...c, food, reason, missing: !food },
+      food,
+      gramsText: c.grams > 0 ? String(Math.round(c.grams)) : "",
+      unitLabel: c.unitLabel,
+      removed: false,
+    };
+  });
 }
 
 function gramsOf(r: Row): number {
@@ -103,9 +142,22 @@ export function QuickAddCard({ date }: { date: string }) {
   const [slot, setSlot] = useState<MealSlot>(() => mealSlotFromTime(nowHM()));
   /** 「一顿饭」预设面板是否展开 */
   const [presetOpen, setPresetOpen] = useState(false);
+  /** 打开拍照识别面板时的预填名字 */
+  const [photoFor, setPhotoFor] = useState<string | null>(null);
 
+  // 用户自己的食物库。读一次给整棵子树用。
+  const customFoods = loadCustomFoods();
+
+  /**
+   * 有没有配 Key。没配就**不显示拍照入口** ——
+   * 照 `WhatToEatCard` 的既有做法：宁可看不到按钮，也不要让用户点了才发现用不了。
+   */
+  const hasPhotoKey = Boolean(loadApiKeys().deepseekKey?.trim());
+
+  // ⚠️ 必须走合并检索：用户自己加的食物也会出现在「最近常吃」里，
+  // 只用内置库的话那一行会**静默消失**（点了没反应的空白，最难查的那种 bug）。
   const frequent = frequentFoods(6)
-    .map((f) => foodById(f.foodId))
+    .map((f) => findFoodByIdIn(f.foodId, customFoods))
     .filter((f): f is FoodItem => !!f);
 
   const ready = (rows ?? []).filter((r) => !r.removed && r.food && gramsOf(r) > 0);
@@ -114,7 +166,7 @@ export function QuickAddCard({ date }: { date: string }) {
   /** 把一顿饭预设展开成和文本解析相同的 Row[]，从而复用整套预览 / 删改 / 保存 UI */
   function rowsFromPreset(p: MealPreset): Row[] {
     return p.items.map((it) => {
-      const food = foodById(it.foodId);
+      const food = findFoodByIdIn(it.foodId, customFoods);
       return {
         c: {
           raw: "",
@@ -145,7 +197,7 @@ export function QuickAddCard({ date }: { date: string }) {
       setRows(null);
       return;
     }
-    setRows(toRows(cs));
+    setRows(toRows(cs, customFoods));
     setMsg("");
   }
 
@@ -385,13 +437,21 @@ export function QuickAddCard({ date }: { date: string }) {
                         </div>
                       </>
                     )}
-                    <div style={{ marginTop: 8 }}>
+                    <div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap" }}>
                       <button
                         className="yq-btn yq-btn-sm yq-btn-ghost"
                         onClick={() => setPicker({ query: r.c.name || r.c.cleaned })}
                       >
                         自己搜一个
                       </button>
+                      {hasPhotoKey && (
+                        <button
+                          className="yq-btn yq-btn-sm yq-btn-ghost"
+                          onClick={() => setPhotoFor(r.c.name || r.c.cleaned || "")}
+                        >
+                          📷 拍照让 AI 读一下
+                        </button>
+                      )}
                     </div>
                   </>
                 )}
@@ -421,8 +481,27 @@ export function QuickAddCard({ date }: { date: string }) {
         <FoodSearchDialog
           initialFood={picker.food}
           initialQuery={picker.query}
+          extraFoods={customFoods}
           onClose={() => setPicker(null)}
           onAdd={addOne}
+          onPhoto={
+            hasPhotoKey
+              ? (q) => {
+                  setPicker(null);
+                  setPhotoFor(q);
+                }
+              : undefined
+          }
+        />
+      )}
+
+      {photoFor !== null && (
+        <FoodPhotoSheet
+          date={date}
+          slot={slot}
+          hintName={photoFor || undefined}
+          onClose={() => setPhotoFor(null)}
+          onSaved={(f) => setMsg(`已存进「我的食物库」并记一笔：${f.name} → ${slot}`)}
         />
       )}
     </section>

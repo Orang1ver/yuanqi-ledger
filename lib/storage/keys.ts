@@ -64,6 +64,19 @@ export const KEYS = {
   /** 饮食日记（元气账本新增） */
   dietLog: "recipe.dietLog.v1",
   /**
+   * 用户自己加的食物（拍照识别 / 手输）。
+   *
+   * ⚠️ 与内置库**分开存**：内置库是构建期资产（`data/foods.zh.json`），打进
+   * bundle 里的，运行时改不了。用户加的东西必须住在一个能在运行时写的地方。
+   *
+   * 检索时两者会合并（见 `lib/nutrition/lookup.ts`），但存储上永远是两份 ——
+   * 这样"清空我的食物库"不会碰到内置库，升级版本也不会把用户的东西冲掉。
+   *
+   * 已核对：`customFoods` 与既有全部键**无子串重叠**
+   * （不会被 `describeBackup` 的 `has(...)` 误判成别的分组）。
+   */
+  customFoods: "recipe.customFoods.v1",
+  /**
    * 久未备份提醒的状态：第一次打开 / 上次导出备份 / 静默期。
    * ⚠️ 这是**应用元数据**，不是用户记录 —— 所以刻意**不进** `describeBackup`
    * 的导入预览（同 `iosInstallHintDismissed` / `updateBannerDismissed`）。

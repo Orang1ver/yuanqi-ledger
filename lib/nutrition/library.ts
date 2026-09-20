@@ -25,8 +25,13 @@ const PORTIONS = rawPortions as unknown as PortionTable;
 let idIndex: Map<string, FoodItem> | null = null;
 let nameIndex: Map<string, FoodItem> | null = null;
 
-/** 归一化：去空白、统一大小写。全角空格也一并干掉，中文输入法常带 */
-function normalize(s: string): string {
+/**
+ * 归一化：去空白、统一大小写。全角空格也一并干掉，中文输入法常带。
+ *
+ * ⚠️ **导出**是为了让 `lookup.ts` 与 `lib/storage/customFoods.ts` 复用同一份，
+ * 而不是各写一遍（AGENTS 地雷 29：判据只能有一份，两边各写必然漂移）。
+ */
+export function normalize(s: string): string {
   return s.replace(/[\s\u3000]+/g, "").toLowerCase();
 }
 

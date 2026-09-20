@@ -8,10 +8,11 @@
  */
 
 import { useState } from "react";
-import { foodsByCategory, searchFoods } from "@/lib/nutrition/library";
+import { foodsByCategoryIn, searchAllFoods } from "@/lib/nutrition/lookup";
 import { defaultPortionOptions } from "@/lib/nutrition/quickadd";
 import { FOOD_CATEGORIES, categoryLabel } from "@/lib/nutrition/types";
 import type { FoodCategory, FoodItem } from "@/lib/nutrition/types";
+import { loadCustomFoods } from "@/lib/storage";
 import { PortionPicker, type PortionValue } from "./PortionPicker";
 
 export function FoodSearchDialog({
@@ -19,7 +20,9 @@ export function FoodSearchDialog({
   onAdd,
   initialFood,
   initialQuery,
+  extraFoods,
   ctaLabel = "记下这一份",
+  onPhoto,
 }: {
   onClose: () => void;
   onAdd: (food: FoodItem, portion: PortionValue) => void;
@@ -27,8 +30,16 @@ export function FoodSearchDialog({
   initialFood?: FoodItem;
   /** 预填搜索词。库里没匹配到的行点「自己搜一个」进来时，别让用户再打一遍 */
   initialQuery?: string;
+  /**
+   * 用户自己的食物（「我的食物库」）。
+   * ⚠️ 不传就现取一次 —— 但传进来能让父组件把同一次读取复用给多处，
+   * 避免每次渲染碰一遍 localStorage。
+   */
+  extraFoods?: readonly FoodItem[];
   /** 按钮文案。菜单库拿它来「关联到这道菜」，动作不同、步骤一样 */
   ctaLabel?: string;
+  /** 有拍照能力时给个入口。不传就不显示（比如菜单库那条路用不到） */
+  onPhoto?: (query: string) => void;
 }) {
   const [q, setQ] = useState(initialQuery ?? "");
   const [picked, setPicked] = useState<FoodItem | null>(initialFood ?? null);
@@ -38,7 +49,16 @@ export function FoodSearchDialog({
   });
   const [category, setCategory] = useState<FoodCategory | null>(null);
 
-  const results = q.trim() ? searchFoods(q, 20) : category ? foodsByCategory(category) : [];
+  // 内置库 + 我的食物库合并检索。extra 为空时行为与改动前逐字一致。
+  const extra = extraFoods ?? loadCustomFoods();
+  const results = q.trim()
+    ? searchAllFoods(q, extra, 20)
+    : category
+      ? foodsByCategoryIn(category, extra)
+      : [];
+
+  /** 这条是不是用户自己加的 —— 列表上标一下，用户才知道哪条是自己录的 */
+  const isMine = (f: FoodItem) => f.id.startsWith("user-");
 
   function choose(food: FoodItem) {
     const first = defaultPortionOptions(food)[0];
@@ -103,9 +123,18 @@ export function FoodSearchDialog({
 
             <div style={{ marginTop: 10 }}>
               {results.length === 0 ? (
-                <p className="yq-empty">
-                  {q.trim() ? "没搜到。换个说法试试，或者用「一句话记」直接说。" : "上面选个分类，或直接搜。"}
-                </p>
+                <>
+                  <p className="yq-empty">
+                    {q.trim() ? "没搜到。换个说法试试，或者用「一句话记」直接说。" : "上面选个分类，或直接搜。"}
+                  </p>
+                  {q.trim() && onPhoto && (
+                    <div style={{ marginTop: 8 }}>
+                      <button className="yq-btn yq-btn-sm" onClick={() => onPhoto(q)}>
+                        📷 对着包装拍一下，让 AI 读数值
+                      </button>
+                    </div>
+                  )}
+                </>
               ) : (
                 results.map((f) => (
                   <button
@@ -114,7 +143,12 @@ export function FoodSearchDialog({
                     style={{ width: "100%", background: "none", border: "none", borderBottom: "1px solid var(--yq-line)", cursor: "pointer", textAlign: "left" }}
                     onClick={() => choose(f)}
                   >
-                    <span style={{ color: "var(--yq-ink)", fontSize: 15 }}>{f.name}</span>
+                    <span style={{ color: "var(--yq-ink)", fontSize: 15 }}>
+                      {f.name}
+                      {isMine(f) && (
+                        <span className="yq-badge yq-badge-info" style={{ marginLeft: 6 }}>我的</span>
+                      )}
+                    </span>
                     <span className="yq-hint">
                       {categoryLabel(f.category)} · {f.kcal} kcal/100{f.unit}
                     </span>

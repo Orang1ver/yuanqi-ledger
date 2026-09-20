@@ -24,11 +24,11 @@
 
 import { emitDataChanged } from "@/lib/bus";
 import { groupByMealSlot } from "@/lib/nutrition/core";
-import { foodById } from "@/lib/nutrition/library";
+import { findFoodByIdIn } from "@/lib/nutrition/lookup";
 import { MEAL_SPLIT_NOTE, mealKcalTarget } from "@/lib/nutrition/targets";
 import { portionHitOf, tierOfEntry } from "@/lib/nutrition/tiers";
 import type { DietEntry, NutritionTargets } from "@/lib/nutrition/types";
-import { deleteDietEntry, editDietEntry } from "@/lib/storage";
+import { deleteDietEntry, editDietEntry, loadCustomFoods } from "@/lib/storage";
 import { EntryFeedback } from "./EntryFeedback";
 import { PortionChips } from "./PortionChips";
 
@@ -39,6 +39,10 @@ export function DietDayList({
   entries: DietEntry[];
   targets: NutritionTargets;
 }) {
+  // 用户自己的食物库。读一次给整棵子树用 —— 别在 map 里反复碰 localStorage。
+  // 这个是**运行时数据**（可能为空），所以取不到不会影响老记录。
+  const customFoods = loadCustomFoods();
+
   const groups = groupByMealSlot(entries);
   const dayKcal = Math.round(groups.reduce((a, g) => a + g.totals.values.kcal, 0));
   const dayPct = targets.kcal > 0 ? Math.round((dayKcal / targets.kcal) * 100) : 0;
@@ -92,7 +96,9 @@ export function DietDayList({
               g.entries.map((e) => {
                 const tier = tierOfEntry(e);
                 const hit = portionHitOf(e);
-                const food = e.foodId ? foodById(e.foodId) : undefined;
+                // ⚠️ 用合并检索：已记的账里可能是**用户自己加的食物**（id 带 user-），
+                // 只听内置库的话，那些记录在这一行会变成"库里没有"—— 明明就在他自己的库里。
+                const food = findFoodByIdIn(e.foodId, customFoods);
                 // 每条档位的克数 = 总克数 ÷ 数量。PortionChips 的 grams 是**每单位**的口径。
                 const perUnit = e.amount > 0 ? e.grams / e.amount : e.grams;
 
