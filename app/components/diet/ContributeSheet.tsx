@@ -169,13 +169,6 @@ export function ContributeSheet({
           </ul>
         </div>
 
-        {/* ---------- 隐私：邮箱会进公开仓库 ---------- */}
-        <p className="yq-hint" style={{ color: "var(--yq-accent-ink)" }}>
-          这条申请里只有食物本身、app 版本和校验结论，
-          <strong>不含你的饮食记录、Key 或照片</strong>。
-          但发到 GitHub 的那份是公开的，**收件邮箱（{CONTRIBUTE_EMAIL}）会显示在上面**，
-          可能被爬虫抓走。不想公开就改用「发邮件给开发者」那条。
-        </p>
       </div>
     </div>
   );

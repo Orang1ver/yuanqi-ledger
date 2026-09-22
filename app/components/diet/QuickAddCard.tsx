@@ -257,6 +257,15 @@ export function QuickAddCard({ date }: { date: string }) {
     <section className="yq-card" style={{ marginBottom: 14 }}>
       <div className="yq-section-title">
         <span>记一笔</span>
+        {/* 主动拍照入口：不必先搜索、也不必先想出名字。
+            ⚠️ 放在「搜索添加」前面是有意的 —— 「拍了就知道」比「先想名字再搜」省事，
+            而旧做法只在"搜不到"之后才给拍照，用户得先撞一次墙。
+            没填 Key 时不显示（拍了也读不出来）。 */}
+        {hasPhotoKey && (
+          <button className="yq-btn yq-btn-sm" onClick={() => setPhotoFor("")}>
+            📷 拍照添加
+          </button>
+        )}
         <button className="yq-btn yq-btn-sm" onClick={() => setPicker({})}>
           搜索添加
         </button>

@@ -2405,6 +2405,47 @@ const seedData = isBackup ? loaded.data : loaded;
 const seedLabel = isBackup ? `备份文件（${Object.keys(seedData).length} 项）` : "早期版本样本（legacy-v1.json）";
 
 /**
+ * 把**按日期索引**的样例数据平移到本周。
+ *
+ * ⚠️ 为什么必须做：fixture 里的日期是**写死的**（打卡记录固定在 2026-09-15/16），
+ * 而周报只看「本周」。于是只要今天晚于那一周，「睡眠与心情」那条检查就**必然变红** ——
+ * 与代码毫无关系，纯粹是 fixture 过期。实测从 2026-09-21 起它一直是红的。
+ *
+ * 这正是 AGENTS 地雷 17 那句「一个会无故变红的闸门比没有闸门更糟：人会学会忽略它」，
+ * 也是地雷 18「检查的前置状态要自己造，不要假设数据」的同一个病根。
+ *
+ * **只挪日期键、不动值**：这条检查要验的是"有数据时必须显示平均睡眠、没数据时不许写成 0"，
+ * 与"数据是哪一天记的"无关。
+ *
+ * ⚠️ 以后若有别的检查也依赖 fixture 里的固定日期，把那个键按同样方式加进 DATED_KEYS ——
+ *    别让下一条检查再变成时间炸弹。
+ */
+function shiftDatedKeysToThisWeek(seed) {
+  /** 按日期索引的键。数组型的（如 dietLog，每条自带 date 字段）不在这里处理 */
+  const DATED_KEYS = ["recipe.dailyCheckins.v1"];
+  const now = new Date();
+  const iso = (d) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+  for (const key of DATED_KEYS) {
+    const obj = seed[key];
+    if (!obj || typeof obj !== "object" || Array.isArray(obj)) continue;
+    const days = Object.keys(obj).sort();
+    if (!days.length) continue;
+    // 整体平移到「今天往前数 N-1 天」，保持原本的先后顺序
+    const moved = {};
+    days.forEach((oldKey, i) => {
+      const t = new Date(now);
+      t.setDate(now.getDate() - (days.length - 1 - i));
+      moved[iso(t)] = obj[oldKey];
+    });
+    seed[key] = moved;
+    console.log(`▶ ${key} 的日期已从 [${days.join(", ")}] 平移到本周`);
+  }
+}
+shiftDatedKeysToThisWeek(seedData);
+
+/**
  * 真正要验的：界面上的文字里必须出现这些 —— 它们只能来自被注入的数据
  *
  * 饮食页要分两种情况断言，因为这两条路本来就该长得不一样：
