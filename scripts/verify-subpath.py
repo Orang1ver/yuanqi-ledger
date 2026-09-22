@@ -28,6 +28,13 @@ import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+
+# Windows 上 pwsh / cmd 的 stdout 默认是 GBK，打印本脚本里的 ✓ / ⚠ 会直接抛
+# UnicodeEncodeError，把一次**成功**的自检变成失败（2026-09-22 实测；Git Bash 下不复现）。
+# 显式钉成 UTF-8；老解释器没有 reconfigure 就跳过。
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8")
 OUT = ROOT / "out"
 
 # 这些属性里的站内路径需要检查

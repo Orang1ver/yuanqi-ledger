@@ -315,11 +315,12 @@ async function main() {
   });
 
   check("老 FoodItem 没有 sugar · 折算时不报错、也不当 0", () => {
-    // 内置库**刻意一条糖都没补**（糖只来自拍照识别与做菜加的糖两个入口），
-    // 所以"取一个内置食物、算它的糖"这条路必须安静地给出 undefined。
+    // 内置库**只给纯糖类补了糖值**（白砂糖 99.9 / 蜂蜜 75.6），其余 248 条一条不动 ——
+    // 糖的两个入口仍是拍照识别与做菜加的糖，对普通食物"没标"就是"没加糖"。
+    // 所以"取一个**没有**糖值的内置食物、算它的糖"这条路必须安静地给出 undefined。
     const chips = foodById("shupian");
     assert.ok(chips, "读不到 shupian");
-    assert.equal(chips.sugar, undefined, "内置库不该被回填糖值");
+    assert.equal(chips.sugar, undefined, "普通食物不该被回填糖值");
 
     const n = nutritionOf(chips, 70);
     assert.equal(n.sugar, undefined, "不该把缺失折成 0");

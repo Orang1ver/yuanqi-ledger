@@ -209,7 +209,7 @@ export function scoreDay(input: {
       max: 15,
       got: 15 * rampDown(sugarShare, 0.05, 0.15),
       ratio: sugarShare / 0.15,
-      note: `添加糖占今天热量的 ${Math.round(sugarShare * 100)}%（膳食指南建议添加糖供能不超过 10%）`,
+      note: `添加糖占今天热量的 ${Math.round(sugarShare * 100)}%（膳食指南建议不超过 10%，5% 以内最好）`,
     });
   } else {
     const ultraKcal = entries.filter(isUltraish).reduce((a, e) => a + e.nutrition.kcal, 0);

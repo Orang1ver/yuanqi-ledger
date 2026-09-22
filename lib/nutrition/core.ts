@@ -76,6 +76,9 @@ export function scaleNutrition(v: NutritionValues, times: number): NutritionValu
     carb: v.carb * times,
     sodium: v.sodium === undefined ? undefined : v.sodium * times,
     fiber: v.fiber === undefined ? undefined : v.fiber * times,
+    // 糖在这里**跟进 sodium / fiber 的既有写法**（带一个值为 undefined 的键）。
+    // 要落盘成快照的那一步由 `nutritionOf` 与 `diet.ts` 的 `scaleSnapshot` 负责「不写键」——
+    // 为什么两处不一样，见 `nutritionOf` 上方那段注释（快照形状必须与 JSON 往返后一致）。
     sugar: v.sugar === undefined ? undefined : v.sugar * times,
   };
 }
@@ -125,6 +128,7 @@ export function roundValues(v: NutritionValues, digits = 1): NutritionValues {
     carb: round(v.carb, digits),
     sodium: v.sodium === undefined ? undefined : Math.round(v.sodium),
     fiber: v.fiber === undefined ? undefined : round(v.fiber, digits),
+    // 同上：这里跟进 sodium / fiber 的写法；只有要落盘的那一步才「不写键」。
     sugar: v.sugar === undefined ? undefined : round(v.sugar, digits),
   };
 }
@@ -343,7 +347,7 @@ function coverageNote(key: NutrientStatus["key"], intake: NutritionTotals): stri
    *
    * 钠/纤维在覆盖率够高时不加话（那个数字就是那个数字）；糖不行 ——
    * 因为「添加糖」只统计**标了糖**的记录，而这个字段在本库里**大面积为空是预期状态**
-   * （内置库一条都没回填，只有拍照识别与做菜加的糖会产生它）。
+   * （内置库只给纯糖类那两条补了值，其余都没回填；糖主要来自拍照识别与做菜加的糖）。
    * 所以这一行必须一直挂着「已记录的」这四个字：
    *   「今天糖摄入 12g」是句没说清的话（听起来像全天总摄入），
    *   「已记录的添加糖 12g」才是这句话能支撑的结论。
