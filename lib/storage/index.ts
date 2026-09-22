@@ -5,6 +5,7 @@ export * from "./io";
 export * from "./meals";
 export * from "./diet";
 export * from "./customFoods";
+export * from "./myRecipes";
 export * from "./takeout";
 export * from "./health";
 export * from "./backup";

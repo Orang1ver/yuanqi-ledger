@@ -4,14 +4,20 @@
  * ⚠️ 两条诚实性要求，不是可选项：
  *
  * 1) **算不出来的维度不许编。** 食物库（`data/foods.zh.json`）没有「添加糖」字段，
- *    所以这里**没有**「添加糖」这一维。用别的数据凑一个糖分出来，
- *    正是这个项目最反对的那种假精确 —— 分数会看起来很专业，但没有任何数据支撑。
- *    同理，原来设想的「超加工」也没有依据，降级为**分类口径**的「零食甜饮」，
- *    并在 note 里写明它是代理指标。
+ *    所以这里**没有**「添加糖」这一维 —— 这一条至今没变，维度还是七维 100 分。
+ *    用别的数据凑一个糖分出来，正是这个项目最反对的那种假精确 ——
+ *    分数会看起来很专业，但没有任何数据支撑。
+ *    同理，原来设想的「超加工」也没有依据，降级为**分类口径**的「零食甜饮」。
+ *
+ *    ⚠️ 但「零食甜饮」这一维的**判定**已经升级过（2026-09-22）：**有糖数据时用真糖**
+ *    （`NutritionTotals.values.sugar`，来自拍照识别与做菜加的糖），没有时退回名字代理。
+ *    这**不是**新增维度、也没有动权重，只是把代理换成了真数据 —— 见 `scoreDay` 里那一段。
  *
  * 2) **数据不全的维度不进分母。** 钠只有 40% 的记录含数据时，把缺失当 0 会白送满分。
  *    这里把该维标成 `insufficient` 并从满分里整体扣掉，再按剩余满分归一化到 100 ——
  *    所以「今天 82 分」永远配着「钠数据齐全」这类前提能说清。
+ *    （添加糖不走这条路：按它的定义，没标 = 没加糖，所以那些记录按 0 计入是对的，
+ *    该不该说"数据不够"由覆盖率口径管，见 `core.ts` 的 `sumNutrition` / `coverageNote`。）
  */
 
 import type {
@@ -71,6 +77,10 @@ function rampUp(v: number, zero: number, full: number): number {
  * 直接把整个分类算成"含糖饮料"会冤枉它们。所以这里按名字做一次筛选，
  * 宁可标得保守，也不假装自己有糖含量数据。
  * 没有命中的饮料（白水、纯茶、黑咖啡）不计入。
+ *
+ * ⚠️ 它现在**只在当天没有任何添加糖数据时**才生效（`scoreDay` 里判的）：
+ * 一旦有一条记录标了糖，那一维就改成按真糖算 —— 到那时这个名单是多余的，
+ * 留着它只是为了让"还没数据"的那一天也有个保守的说法。
  */
 const SWEET_DRINK_HINTS = [
   "奶茶", "可乐", "雪碧", "果汁", "果茶", "乳酸", "酸梅汤",
@@ -168,24 +178,53 @@ export function scoreDay(input: {
     note: `占今天热量的 ${Math.round(vegFruit * 100)}%`,
   });
 
-  // ---- 零食甜饮（15）：代理指标，见 isUltraish 的说明 ----
+  // ---- 零食甜饮（15）：有糖数据时用**真糖**，没有时退回分类与名称的代理 ----
   //
   // ⚠️ 「占比」类维度在没有任何摄入时是**无意义**的，必须先判断有没有吃。
   // 这是实测踩出来的：空记录的一天因为"没吃零食"拿了这 15 分，总分 23 ——
   // 一个什么都没记的日子反而比认真记了但零食偏多的日子好看，显然荒谬。
+  //
+  // ⚠️ **这一维的维度数、权重、key 都没动**，动的只是它的**判定依据**。
+  // 为什么不索性新增一维「添加糖」：那会和这一维**双重扣分**（一罐可乐被罚两次），
+  // 还要把七维 100 分重新分配 —— 那正是用户说的"影响现有体系"。
+  // 所以这里做的是把代理**升级**成真数据，并让 note 说清这一跑用的是哪个口径。
+  //
+  // ⚠️ **补了糖数据之后，同一天的分数会变** —— 这是**有意**的，不是抖动：
+  // 数据变准了，判据就该跟着变准。前提是 note 已经把口径写出来，
+  // 否则用户只会看到分数莫名其妙地跳了一下。
   const hasIntake = v.kcal > 0;
-  const ultraKcal = entries.filter(isUltraish).reduce((a, e) => a + e.nutrition.kcal, 0);
-  const ultraShare = hasIntake ? ultraKcal / v.kcal : 0;
-  dims.push({
-    key: "ultra",
-    label: "零食甜饮",
-    max: 15,
-    got: hasIntake ? 15 * rampDown(ultraShare, 0.1, 0.35) : 0,
-    ratio: ultraShare / 0.35,
-    note: hasIntake
-      ? `占今天热量的 ${Math.round(ultraShare * 100)}%（按分类与名称估算）`
-      : "今天还没有记录",
-  });
+  const sugar = v.sugar;
+  const sugarShare = hasIntake && sugar !== undefined ? (sugar * 4) / v.kcal : null;
+  if (hasIntake && sugarShare !== null) {
+    /*
+     * 真数据这条路：添加糖供能占比。阈值挂在指南那条线上 ——
+     * 权威口径是「添加糖供能 < 10%（最好 < 5%）」，所以
+     * 5% 及以下给满分、15% 及以上归零，中间线性。
+     * 直接套代理那条 (0.1, 0.35) 不行：那对付的是"零食甜饮占了多少热量"，
+     * 而糖是"整份餐里加了糖的那部分"，同样 10% 的含糖量，两者的严重程度不是一回事。
+     */
+    dims.push({
+      key: "ultra",
+      label: "零食甜饮",
+      max: 15,
+      got: 15 * rampDown(sugarShare, 0.05, 0.15),
+      ratio: sugarShare / 0.15,
+      note: `添加糖占今天热量的 ${Math.round(sugarShare * 100)}%（膳食指南建议添加糖供能不超过 10%）`,
+    });
+  } else {
+    const ultraKcal = entries.filter(isUltraish).reduce((a, e) => a + e.nutrition.kcal, 0);
+    const ultraShare = hasIntake ? ultraKcal / v.kcal : 0;
+    dims.push({
+      key: "ultra",
+      label: "零食甜饮",
+      max: 15,
+      got: hasIntake ? 15 * rampDown(ultraShare, 0.1, 0.35) : 0,
+      ratio: ultraShare / 0.35,
+      note: hasIntake
+        ? `占今天热量的 ${Math.round(ultraShare * 100)}%（按分类与名称估算，还没有糖数据）`
+        : "今天还没有记录",
+    });
+  }
 
   // ---- 供能比（15）：脂肪供能 20%~30% 为满分 ----
   const ratios = energyRatios(v);

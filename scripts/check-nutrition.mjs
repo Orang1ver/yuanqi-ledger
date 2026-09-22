@@ -80,6 +80,14 @@ const LIMITS = {
   kcal: 900,      // 纯油脂约 899
   macro: 100,     // 蛋白/脂肪/碳水各自不可能超过 100g
   sodium: 40000,  // 纯食盐约 39311 mg/100g
+  /*
+   * 添加糖 g/100g。纯糖约 100g/100g（白砂糖的碳水就是 99.9），所以这里取 100。
+   * ⚠️ 这一项**不是**在给内置库定字段：内置的二百多条一条都没补糖（用户明确要求
+   * "不影响现有体系"），糖只由拍照识别与做菜加的糖两个入口产生。
+   * 这条校验是给那**两个入口**的产物兜底的 —— 谁要手滑把「碳水 9.0」抄成「糖 90」，
+   * 或者把糖写成 990，这里当场拦下。
+   */
+  sugar: 100,
 };
 
 /** 各分类至少要有多少条，避免某类空着导致统计口径出现「其他」一大坨 */
@@ -213,13 +221,32 @@ if (SELFTEST) {
     portions: [{ label: "一份", grams: 300, range: [200, 400], isDefault: true, note: "自证用（故意排在具体规则前面）" }],
   });
 
+  /*
+   * 第七处破坏，喂给「添加糖区间」那条检查 —— 2026-09-22 随糖这功能一起加的。
+   *
+   * 把「白砂糖」标成 130g/100g：纯糖最多 100g/100g，这个数物理上不可能，
+   * 正是那条检查存在的理由。
+   *
+   * ⚠️ 刻意挑 `baitang` 而不是 victim：**一条破坏只该触发它对应的那条检查**
+   * （地雷 23）。混在别的条目上会让"到底是哪条检查拦下的"变得说不清。
+   * 它也不会串味到别的检查：闭合校验与质量守恒只看 kcal / 蛋白 / 脂肪 / 碳水（+纤维），
+   * 糖不参与那两条算式。
+   */
+  const sugarVictim = LIBRARY.items.find((x) => x.id === "baitang");
+  if (!sugarVictim) {
+    console.error("✗ 自证失败：找不到用来做实验的条目 baitang —— 破坏点根本没落到位");
+    process.exit(2);
+  }
+  sugarVictim.sugar = 130;
+
   sabotaged =
     `把「${victim.name}」的脂肪从 34 改成 3.4；` +
     "并塞进一条没有任何份量规则能命中的食物「自证用孤儿食物」；" +
     "再抽掉碗的干重专门规则，让「挂面」掉回熟重的 250g；" +
     "抹掉「一碗粥」那条规则的 note；" +
     "往「一碗饺子」的 match 里塞一个谁也叫不上的单字词「饺」；" +
-    "最后在表头塞一条泛化的「一份拌饭 = 300g」，把更具体的拌饭规则挡住";
+    "在表头塞一条泛化的「一份拌饭 = 300g」，把更具体的拌饭规则挡住；" +
+    "最后把「白砂糖」的添加糖标成 130g/100g（纯糖不可能超过 100）";
 }
 
 // ---------- 收集问题 ----------
@@ -285,6 +312,18 @@ for (const [i, f] of (LIBRARY.items ?? []).entries()) {
     else if (f.sodium > LIMITS.sodium) fail(at, `钠 ${f.sodium} 超过纯食盐的 ${LIMITS.sodium}`);
   }
   if (f.fiber !== undefined && (!num(f.fiber) || f.fiber < 0)) fail(at, `fiber 不是有效数字：${JSON.stringify(f.fiber)}`);
+  /*
+   * 添加糖（2026-09-22 加）。**这里只有数值区间校验，一点匹配逻辑都没有** ——
+   * 地雷 29：判据只能有一份，运行时那套在 lib/nutrition/core.ts 里，
+   * 这里绝不许再抄一份（这个闸门已经因为"两边各写一份判据"漂移过一次、还漂得很难看）。
+   *
+   * 为什么整条缺失不报错：内置库一条糖都没有，而那是**预期状态**
+   * （糖只来自拍照识别与做菜加的糖两个入口）。报"缺 sugar"等于把预期状态报成问题。
+   */
+  if (f.sugar !== undefined) {
+    if (!num(f.sugar) || f.sugar < 0) fail(at, `sugar 不是有效数字：${JSON.stringify(f.sugar)}`);
+    else if (f.sugar > LIMITS.sugar) fail(at, `添加糖 ${f.sugar} 超过纯糖的 ${LIMITS.sugar}g/100g`);
+  }
 
   // 三大营养素之和不能超过总质量
   if (num(f.protein) && num(f.fat) && num(f.carb)) {
@@ -621,7 +660,7 @@ function report() {
 const failed = report();
 
 if (SELFTEST) {
-  // 六处破坏各对应一条检查，六条都必须在 problems 里出现才算自证通过。
+  // 七处破坏各对应一条检查，七条都必须在 problems 里出现才算自证通过。
   // 只断言"有问题"是不够的：那样其中一条检查坏掉了也照样绿。
   const expectKinds = [
     "闭合校验不过",
@@ -630,6 +669,7 @@ if (SELFTEST) {
     "没写这个克数指什么",
     "一条食物都命中不了",
     "永远走不到",
+    "超过纯糖的",
   ];
   const missingKinds = expectKinds.filter((k) => !problems.some((p) => p.msg.includes(k)));
   if (missingKinds.length) {
@@ -637,7 +677,7 @@ if (SELFTEST) {
     console.error("  永远通过的闸门等于没有闸门，先去修那条检查。");
     process.exit(2);
   }
-  console.log(`\n✓ 自证通过：六处破坏都被对应的检查拦下了（共 ${problems.length} 个问题）。`);
+  console.log(`\n✓ 自证通过：七处破坏都被对应的检查拦下了（共 ${problems.length} 个问题）。`);
   console.log("  永远通过的闸门等于没有闸门，所以这一步不能省。");
   process.exit(0);
 }

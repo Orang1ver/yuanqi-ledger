@@ -182,6 +182,13 @@ function scaleSnapshot(prev: DietEntry, grams: number): DietEntry["nutrition"] {
     carb: n.carb * k,
     sodium: n.sodium === undefined ? undefined : n.sodium * k,
     fiber: n.fiber === undefined ? undefined : n.fiber * k,
+    // 添加糖：与上面两项同款 —— 缺了保持 undefined（不补 0）。
+    // ⚠️ 漏了这一行不会报错，但会让「改一条拍照食物的克数」**静默丢掉糖快照**
+    //    （对象里没有这个键 = 这条记录从此不参与糖统计），而且界面上完全看不出来。
+    // ⚠️ 写成 `sugar: undefined` 也一样不行：这里造的是**要落盘快照**，
+    //    多出来的 undefined 键会被 JSON 丢掉，于是内存里的快照与读回来的是两种形状。
+    //    同 `core.ts` 的 `nutritionOf` —— 快照里值为 undefined 的糖键不写。
+    ...(n.sugar === undefined ? {} : { sugar: n.sugar * k }),
   };
 }
 

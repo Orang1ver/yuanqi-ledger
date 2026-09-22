@@ -229,6 +229,9 @@ const BACKUP_GROUPS: { label: string; match: string; counting: "items" | "single
   { label: "饮食记录", match: "mealRecords", counting: "items" },
   { label: "饮食日记", match: "dietLog", counting: "items" },
   { label: "我的食物库", match: "customFoods", counting: "items" },
+  // 「我的菜谱」必须单独列一行：不补的话，用户导出的备份里那部分数据在预览里
+  // 看不到（子串匹配不会自动认出新键），他会以为菜谱没导出去。
+  { label: "我的菜谱", match: "myRecipes", counting: "items" },
   { label: "菜单库", match: "takeoutMock", counting: "items" },
   { label: "AI Key", match: "apikeys", counting: "single" },
   { label: "饮食偏好笔记", match: "userProfile", counting: "single" },

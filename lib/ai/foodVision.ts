@@ -34,6 +34,14 @@ export type FoodReading = {
   protein_g?: number;
   fat_g?: number;
   carb_g?: number;
+  /**
+   * 标签上**单独印着的「糖」**那一行，g/100g。
+   *
+   * ⚠️ 它与 `carb_g` 是两回事：碳水包含淀粉，而「添加糖」只算加进去的糖。
+   * 把碳水当糖填进来，会让整条数据失真（一碗米饭会被算成一大勺糖）。
+   * 旧版标签不强制标糖，**没有这一行是常态**，留空即可 —— 留空 ≠ 0。
+   */
+  sugar_g?: number;
   sodium_mg?: number;
   nrv?: { energy?: number; protein?: number; fat?: number; carb?: number; sodium?: number };
   /** 每份多少克/毫升。只有包装上标了"每份"时才有 */
@@ -72,8 +80,11 @@ const SYSTEM_PROMPT = `你是食物营养信息的**转录员**，不是估算�
    ① 包装上的**商品名 / 品名**（常印在成分表附近或包装正面，如「统一双萃鸭屎香风味柠檬茶」）；
    ② 品牌与品名分开印时，拼成一个完整的名字；
    ③ 图里只有一盘菜、没有包装时，填**菜名**（如「西红柿炒鸡蛋」）。
-   写成完整通顺的名字；**别只写「柠檬茶」这种丢掉品牌与规格的短名**。
-   一个字都看不到时才填空字符串 ""；**绝对不要编造品牌、口味或规格**。
+  写成完整通顺的名字；**别只写「柠檬茶」这种丢掉品牌与规格的短名**。
+  一个字都看不到时才填空字符串 ""；**绝对不要编造品牌、口味或规格**。
+8. sugar_g 只填标签上**单独印着的「糖」**那一行（可能写作「糖」或「其中糖」）。
+   **绝对不要把「碳水化合物」当成糖** —— 淀粉不是添加糖，混填会让整条数据失真。
+   标签上没有这一行就留空。
 
 只回一个 JSON 对象，结构如下（没有的字段直接省略，不要写 null）：
 {
@@ -81,7 +92,7 @@ const SYSTEM_PROMPT = `你是食物营养信息的**转录员**，不是估算�
   "name": "…",
   "basis": "per100ml" | "per100g" | "per_serving",
   "energy_kj": 数字, "energy_kcal": 数字,
-  "protein_g": 数字, "fat_g": 数字, "carb_g": 数字, "sodium_mg": 数字,
+  "protein_g": 数字, "fat_g": 数字, "carb_g": 数字, "sugar_g": 数字, "sodium_mg": 数字,
   "nrv": { "energy": 数字, "protein": 数字, "fat": 数字, "carb": 数字, "sodium": 数字 },
   "serving_grams": 数字,
   "readable": true | false,
@@ -137,6 +148,7 @@ export function parseFoodReading(raw: unknown): FoodReading {
   put(out, "protein_g", r.protein_g);
   put(out, "fat_g", r.fat_g);
   put(out, "carb_g", r.carb_g);
+  put(out, "sugar_g", r.sugar_g);
   put(out, "sodium_mg", r.sodium_mg);
   put(out, "serving_grams", r.serving_grams);
 
@@ -162,6 +174,9 @@ export function parseFoodReading(raw: unknown): FoodReading {
     delete out.protein_g;
     delete out.fat_g;
     delete out.carb_g;
+    // sugar_g 是同一类东西（成分表上的数值），必须一起抹掉 ——
+    // 漏了它，一道菜会带着"每 100g 含糖 X"进账本，而那张图上一个数字都没有。
+    delete out.sugar_g;
     delete out.sodium_mg;
     delete out.nrv;
     delete out.serving_grams;

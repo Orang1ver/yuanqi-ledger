@@ -30,7 +30,24 @@ const f = (
   carb: number,
   sodium: number | undefined,
   fiber: number | undefined,
-): FoodItem => ({ id, name, category, unit: "g", kcal, protein, fat, carb, sodium, fiber, source: "测试夹具" });
+  /** 添加糖（每 100g）。**不传就是「没标」**，不是 0 —— 与钠/纤维同款的可选 */
+  sugar: number | undefined = undefined,
+): FoodItem => ({
+  id,
+  name,
+  category,
+  unit: "g",
+  kcal,
+  protein,
+  fat,
+  carb,
+  sodium,
+  fiber,
+  // 「没标」就**不写这个键**（同 `recipeToFoodItem` / `FoodPhotoSheet` 的做法）——
+  // 写 `sugar: undefined` 会让"这条标了糖、值就是 undefined"成为一个可能的状态
+  ...(sugar === undefined ? {} : { sugar }),
+  source: "测试夹具",
+});
 
 const RICE = f("t-rice", "测试米饭", "staple", 116, 2.6, 0.3, 25.9, 2, 0.3);
 const GREENS = f("t-greens", "测试青菜", "veg", 25, 1.5, 0.3, 2.7, 300, 1.5);
@@ -113,6 +130,83 @@ describe("饮食质量分", () => {
     assert.ok(text.includes("65"), text);
     assert.ok(text.includes("钠"), text);
     assert.ok(text.includes("数据不足"), text);
+  });
+});
+
+/**
+ * 「零食甜饮」这一维的**两条判定路径**。
+ *
+ * 它原来只有一条：按分类与名字猜（`isUltraish` + `SWEET_DRINK_HINTS`）。
+ * 2026-09-22 起多了一条：**当天只要有一条记录标了糖**，就改按真糖的供能占比算。
+ *
+ * ⚠️ 这里钉的不是数值精度，而是三件事：
+ *   1. **维度数、权重、key 一律没动** —— 它仍然是七维 100 分里的一维 15 分。
+ *      为什么不新增第八维「添加糖」：那会和这一维**双重扣分**（一罐可乐被罚两次），
+ *      还要把 100 分重新分配 —— 那正是用户明确说的"影响现有体系"。
+ *   2. **两条路的 `note` 必须把口径写出来** —— 不然用户只会看见分数莫名跳了一下。
+ *   3. **数据变准，判据就该跟着变准** —— 同一批食物、同样的热量，补上糖数据后
+ *      分数从 9.8 掉到 0 是**有意**的，不是抖动。
+ */
+describe("饮食质量分 · 零食甜饮的两条路径（代理 / 真糖）", () => {
+  /** 一份「标签上印了糖」的甜饮：每 100g 糖 10g */
+  const SODA_SUGAR = f("t-soda-sugar", "测试可乐", "drink", 40, 0, 0, 10, 5, 0, 10);
+  /** 同样的东西，但**标签上没印糖那一行** —— 只有这一个差别 */
+  const SODA_PLAIN = f("t-soda-plain", "测试可乐", "drink", 40, 0, 0, 10, 5, 0);
+
+  const ultraOf = (food: FoodItem) => {
+    const { entries, totals } = day([RICE, 300], [food, 200]);
+    return { totals, dim: scoreDay({ entries, totals, targets: TARGETS }).dimensions.find((d) => d.key === "ultra")! };
+  };
+
+  it("没有糖数据 → 退回代理，并在 note 里说清这一跑是猜的", () => {
+    const { totals, dim } = ultraOf(SODA_PLAIN);
+    assert.equal(totals.values.sugar, undefined, "一条都没标糖时总和必须是未知");
+    assert.deepEqual(
+      [dim.key, dim.max],
+      ["ultra", 15],
+      "维度数、权重不许因为糖这条线而变",
+    );
+    assert.match(dim.note!, /还没有糖数据/, dim.note);
+    // 代理按「含糖饮料」罚了一部分分（不是满分，也不是 0）
+    assert.ok(dim.got > 0 && dim.got < 15, `代理分应落在中间，实得 ${dim.got}`);
+  });
+
+  it("有糖数据 → 按真糖供能占比算，note 换成糖的口径", () => {
+    const { totals, dim } = ultraOf(SODA_SUGAR);
+    assert.equal(totals.values.sugar, 20); // 10g/100g × 200g
+    assert.deepEqual([dim.key, dim.max], ["ultra", 15]);
+    assert.match(dim.note!, /添加糖占今天热量的/, dim.note);
+    // 这份"可乐"的糖供能 80/428 ≈ 19%，已越过 15% 那条归零线
+    assert.equal(dim.got, 0, "糖供能 19% 该归零 —— 真数据这条路比代理更严，这是有意的");
+  });
+
+  it("同一条饮料，只差标签上有没有印糖，分数就不同（数据变准，判据跟着变准）", () => {
+    const plain = ultraOf(SODA_PLAIN).dim;
+    const withSugar = ultraOf(SODA_SUGAR).dim;
+    assert.notEqual(plain.note, withSugar.note, "口径变了却没写在 note 里，用户只会看到分数莫名一跳");
+    assert.notEqual(plain.got, withSugar.got);
+    assert.equal(plain.max, withSugar.max);
+  });
+
+  it("糖供能在 5% 以内 → 这一维满分；糖不会因为「有数据」就一律扣分", () => {
+    const { entries, totals } = day([RICE, 300], [GREENS, 200], [SODA_SUGAR, 50]);
+    const dim = scoreDay({ entries, totals, targets: TARGETS }).dimensions.find((d) => d.key === "ultra")!;
+    // 糖 5g → 20 kcal，占 418 kcal 的 4.8%，在"最好不超过 5%"以内
+    assert.equal(totals.values.sugar, 5);
+    assert.equal(dim.got, 15);
+    assert.match(dim.note!, /5%/, dim.note);
+  });
+
+  it("⚠ 不许新增第八维「添加糖」—— 维度数、总权重一个不动", () => {
+    const { entries, totals } = day([RICE, 300], [SODA_SUGAR, 200]);
+    const s = scoreDay({ entries, totals, targets: TARGETS });
+    assert.equal(s.dimensions.length, 7);
+    assert.equal(s.dimensions.reduce((a, d) => a + d.max, 0), 100);
+    assert.equal(
+      s.dimensions.find((d) => d.key === "sugar"),
+      undefined,
+      "糖的数据必须是**升级既有维度**，不是新开一维（否则一罐可乐被罚两次）",
+    );
   });
 });
 

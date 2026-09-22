@@ -48,6 +48,22 @@ export function nutritionOf(food: FoodItem, grams: number): NutritionValues {
     carb: food.carb * k,
     sodium: food.sodium === undefined ? undefined : food.sodium * k,
     fiber: food.fiber === undefined ? undefined : food.fiber * k,
+    /*
+     * 添加糖：缺了保持 undefined（不补 0）—— 与 sodium 同款语义。
+     * ⚠️ 到「求和」那一步它俩才分道扬镳：糖把未标当 0，钠不是。见 `addNutrition`。
+     *
+     * ⚠️ 但这里**不能写成 `sugar: undefined`**（那会多出一个值为 undefined 的键）：
+     * 本函数的返回值会被原样存进 `DietEntry.nutrition`，而 `JSON.stringify` 会把
+     * undefined 的键**直接丢掉**。于是「刚记下时的快照」与「关掉再打开读回来的快照」
+     * 形状不同，`diet.test.ts` 那条「营养值等于 nutritionOf 的一次乘法」会当场红
+     * （2026-09-22 实测红过一次）。形状上「没这个键」与「值是 undefined」在所有读的地方
+     * **完全等价**（消费方判的都是 `!== undefined` / `?? 0`），所以保持干净的那一种。
+     *
+     * （`sodium` / `fiber` 那种「总是带一个 undefined 的键」是 0.1.0 就有的写法，
+     *   存储那边本来也会把它们丢掉 —— 只是从来没有断言碰过这个形状。不在这里顺手改，
+     *   是因为那会动到既有字段的产出形状，属于另一件事。）
+     */
+    ...(food.sugar === undefined ? {} : { sugar: food.sugar * k }),
   };
 }
 
@@ -60,6 +76,7 @@ export function scaleNutrition(v: NutritionValues, times: number): NutritionValu
     carb: v.carb * times,
     sodium: v.sodium === undefined ? undefined : v.sodium * times,
     fiber: v.fiber === undefined ? undefined : v.fiber * times,
+    sugar: v.sugar === undefined ? undefined : v.sugar * times,
   };
 }
 
@@ -67,6 +84,21 @@ export function scaleNutrition(v: NutritionValues, times: number): NutritionValu
  * 相加。**低层原语**，用于两份都已确定完整的数据（如「主食 + 主菜」）。
  * 有一部分是 `undefined` 时，结果取已知的那部分 —— 因此**它不适合用来做跨条目的汇总**，
  * 那种场景请用 `sumNutrition()`，它会一并把覆盖度算出来告诉你少了多少。
+ *
+ * ⚠️ **添加糖的「未标当 0」是有意的，不是 bug —— 别把它"修"成和钠一样。**
+ *
+ * 钠和糖看起来都缺数据，但缺失的**含义不同**：
+ *   - 钠缺了 = **不知道**这个食物含多少钠 → 求和时必须跳过，当 0 是撒谎；
+ *   - 添加糖缺了 = 按「添加糖」的**定义**，这个配料**就没加糖** → 当 0 是对的。
+ *
+ * 所以这里对糖用**同一个** `opt`，一行特例都不写：
+ *   一个配料有糖、另一个没标 → 结果 = 有糖那个的量 ✓（没标的就是没加）
+ *   **两个都没标 → 结果 `undefined`**，不是 0 ✓（这条由 `opt` 的
+ *   `x === undefined && y === undefined` 分支保证，也正是「一条糖数据都没有」时必须守住的那条边界）
+ *
+ * ⚠️ 千万别写成 `(a.sugar ?? 0) + (b.sugar ?? 0)` —— 那会把第二条边界破掉：
+ * 一份什么糖都没标的菜会算出「0g 糖」，而正确的话是没有数据。
+ * 界面那边配套的规矩是：只能说「**已记录的**添加糖 Xg」，不能说「今天糖摄入 Xg」。
  */
 export function addNutrition(a: NutritionValues, b: NutritionValues): NutritionValues {
   const opt = (x: number | undefined, y: number | undefined) =>
@@ -78,6 +110,9 @@ export function addNutrition(a: NutritionValues, b: NutritionValues): NutritionV
     carb: a.carb + b.carb,
     sodium: opt(a.sodium, b.sodium),
     fiber: opt(a.fiber, b.fiber),
+    // 走同一个 opt（因此行为已被上面那段注释钉住）。这一行是**必需的**：
+    // 没有它，自做饭菜的糖会在相加这一步被整个丢掉 —— 而"做菜加的糖"正是糖的主要来源之一。
+    sugar: opt(a.sugar, b.sugar),
   };
 }
 
@@ -90,6 +125,7 @@ export function roundValues(v: NutritionValues, digits = 1): NutritionValues {
     carb: round(v.carb, digits),
     sodium: v.sodium === undefined ? undefined : Math.round(v.sodium),
     fiber: v.fiber === undefined ? undefined : round(v.fiber, digits),
+    sugar: v.sugar === undefined ? undefined : round(v.sugar, digits),
   };
 }
 
@@ -100,6 +136,15 @@ export function roundValues(v: NutritionValues, digits = 1): NutritionValues {
  *
  * 覆盖度是这个函数存在的理由：上层必须能说出
  * 「今天钠 1800mg（基于 72% 的记录）」，而不是给出一个看起来很确定的假数字。
+ *
+ * ⚠️ **添加糖与钠/纤维在这里的行为刻意不同**（理由见 `addNutrition` 的注释）：
+ *  - **求和**：标了糖的进总和，没标的按 0 进（"没标 = 没加糖"）。所以这里的 `sugarSum`
+ *    在**至少一条**有糖数据时就是完整答案，不像钠那样只算"已知的那部分"。
+ *  - **一条糖数据都没有**时仍然给 `undefined`，不是 0 —— 空集合的总和是"未知"，不是"零"。
+ *  - `sugarCoverage` 照样报出来，但它的用途不是给总和打折，而是**限制界面措辞**
+ *    （只有 20% 的记录标了糖时说「已记录的添加糖」，不能说「今天糖摄入」）。
+ * 把 `sugar` 那几行"统一"成钠的写法（跳过而不是当 0），会让一份加了 3 勺糖、
+ * 但只有白糖那一条标了糖的菜**少算**糖 —— 那才是真的算错。
  */
 export function sumNutrition(entries: readonly DietEntry[]): NutritionTotals {
   let kcal = 0;
@@ -108,8 +153,10 @@ export function sumNutrition(entries: readonly DietEntry[]): NutritionTotals {
   let carb = 0;
   let sodiumSum = 0;
   let fiberSum = 0;
+  let sugarSum = 0;
   let sodiumKnown = 0;
   let fiberKnown = 0;
+  let sugarKnown = 0;
 
   for (const e of entries) {
     const n = e.nutrition;
@@ -125,6 +172,10 @@ export function sumNutrition(entries: readonly DietEntry[]): NutritionTotals {
       fiberSum += n.fiber;
       fiberKnown += 1;
     }
+    if (n.sugar !== undefined) {
+      sugarSum += n.sugar;
+      sugarKnown += 1;
+    }
   }
 
   const total = entries.length;
@@ -137,10 +188,13 @@ export function sumNutrition(entries: readonly DietEntry[]): NutritionTotals {
       // 一条都没有钠数据时给 undefined，而不是 0 —— 空集合的总和是"未知"，不是"零"
       sodium: sodiumKnown ? sodiumSum : undefined,
       fiber: fiberKnown ? fiberSum : undefined,
+      // 同上；但注意上面那段注释：有数据时它就是完整答案（未标的按 0 计）
+      sugar: sugarKnown ? sugarSum : undefined,
     },
     entries: total,
     sodiumCoverage: total ? sodiumKnown / total : 0,
     fiberCoverage: total ? fiberKnown / total : 0,
+    sugarCoverage: total ? sugarKnown / total : 0,
   };
 }
 
@@ -245,11 +299,34 @@ const TARGET_META: {
   { key: "carb", label: "碳水", unit: "g", direction: "band", tolerance: 0.15 },
   { key: "sodium", label: "钠", unit: "mg", direction: "atMost" },
   { key: "fiber", label: "膳食纤维", unit: "g", direction: "atLeast" },
+  // 添加糖：方向与钠同款（「别超」）。目标值取膳食指南的**理想值 25g**，
+  // 上限 50g 只写进 targets.ts 的说明里，不在这里占第二档（见 NutritionTargets.sugar）。
+  { key: "sugar", label: "添加糖", unit: "g", direction: "atMost" },
 ];
 
-/** 各项实际摄入的取值。sodium/fiber 可能没有数据 */
+/** 各项实际摄入的取值。sodium/fiber/sugar 可能没有数据 */
 function intakeOf(t: NutritionTotals, key: NutrientStatus["key"]): number | undefined {
-  return key === "sodium" ? t.values.sodium : key === "fiber" ? t.values.fiber : t.values[key];
+  return key === "sodium"
+    ? t.values.sodium
+    : key === "fiber"
+      ? t.values.fiber
+      : key === "sugar"
+        ? t.values.sugar
+        : t.values[key];
+}
+
+/**
+ * 某个营养素的数据覆盖率。三个可选营养素各一项，缺一样都不行 ——
+ * 少了分支会**静默退回 `fiberCoverage`**，那种错在界面上看不出来（数字看着挺正常）。
+ */
+function coverageOf(t: NutritionTotals, key: NutrientStatus["key"]): number {
+  return key === "sodium"
+    ? t.sodiumCoverage
+    : key === "fiber"
+      ? t.fiberCoverage
+      : key === "sugar"
+        ? t.sugarCoverage
+        : 0;
 }
 
 /**
@@ -261,8 +338,25 @@ function intakeOf(t: NutritionTotals, key: NutrientStatus["key"]): number | unde
  * 它比完全没有数据更危险，因为它看起来是有依据的。
  */
 function coverageNote(key: NutrientStatus["key"], intake: NutritionTotals): string | undefined {
+  /*
+   * ⚠️ **糖这一条永远给说明，而且措辞与钠/纤维刻意不同。**
+   *
+   * 钠/纤维在覆盖率够高时不加话（那个数字就是那个数字）；糖不行 ——
+   * 因为「添加糖」只统计**标了糖**的记录，而这个字段在本库里**大面积为空是预期状态**
+   * （内置库一条都没回填，只有拍照识别与做菜加的糖会产生它）。
+   * 所以这一行必须一直挂着「已记录的」这四个字：
+   *   「今天糖摄入 12g」是句没说清的话（听起来像全天总摄入），
+   *   「已记录的添加糖 12g」才是这句话能支撑的结论。
+   */
+  if (key === "sugar") {
+    const cov = Math.round(intake.sugarCoverage * 100);
+    return cov >= 90
+      ? "已记录的添加糖 —— 只统计标了糖的包装食品与做菜加的糖；没标不等于没加糖"
+      : `已记录的添加糖 —— 只基于 ${cov}% 的记录，其余条目没标糖（没标不等于没加糖）`;
+  }
+
   if (key !== "sodium" && key !== "fiber") return undefined;
-  const cov = key === "sodium" ? intake.sodiumCoverage : intake.fiberCoverage;
+  const cov = coverageOf(intake, key);
   if (cov >= 0.9) return undefined;
   return `只基于 ${Math.round(cov * 100)}% 的记录，其余条目没有这项数据`;
 }
@@ -291,12 +385,18 @@ export function compareToTargets(
     };
 
     if (value === undefined) {
-      const coverage = meta.key === "sodium" ? intake.sodiumCoverage : intake.fiberCoverage;
+      const coverage = coverageOf(intake, meta.key);
       return {
         ...base,
         ratio: 0,
         verdict: "unknown" as const,
-        note: `只有 ${Math.round(coverage * 100)}% 的记录含有这项数据，先补齐再判断`,
+        // 糖的说辞要单独一句：它"没有数据"的成因与钠不同 ——
+        // 钠是"记录里查不到"，糖是"这一天压根没有一条标了糖的记录"，
+        // 而且**必须明说这不是 0**（否则用户会读成"今天没吃糖"，那是句没有依据的放心话）。
+        note:
+          meta.key === "sugar"
+            ? `只有 ${Math.round(coverage * 100)}% 的记录标了糖，今天给不出「已记录的添加糖」（没有数据 ≠ 0）`
+            : `只有 ${Math.round(coverage * 100)}% 的记录含有这项数据，先补齐再判断`,
       };
     }
     if (!(target > 0)) {
