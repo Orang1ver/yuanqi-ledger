@@ -34,7 +34,7 @@ import {
 import { allFoods, findFoodByName, foodById, portionTable, searchFoods } from "./library";
 import { parseFragment, splitFragments, stripLeadNoise } from "./parse";
 import { matchFood, resolveText } from "./quickadd";
-import { MEAL_SPLIT_NOTE, calcNutritionTargets, mealKcalTarget, targetsConflict } from "./targets";
+import { MEAL_SPLIT_NOTE, SUGAR_IDEAL_G, calcNutritionTargets, mealKcalTarget, targetsConflict } from "./targets";
 import { MEAL_SLOTS } from "../tags";
 import type { DietEntry, FoodItem } from "./types";
 import type { HealthProfile } from "../types";
@@ -169,6 +169,167 @@ describe("汇总与数据覆盖度", () => {
       ["早餐", "午餐", "晚餐", "加餐"],
     );
     assert.equal(groupByMealSlot(list)[1].entries.length, 0); // 午餐今天没记
+  });
+});
+
+/**
+ * 添加糖（`sugar`）—— **它的缺失语义与钠/纤维刻意不同**，这里是那条差异的钉子。
+ *
+ * 一句话的来历：`sodium` / `fiber` 查不到 = 「不知道」（求和时跳过，宁可少算也不假装知道）；
+ * 而 `sugar` 在本库里大面积为空是**预期状态**（内置库只给纯糖类那两条补了值，
+ * 其余的糖来自拍照识别与做菜加的糖），没标 = 「这一条没加糖」—— 所以求和时按 0 进。
+ *
+ * 但**一条糖数据都没有**时仍必须是 `undefined` 而不是 0：
+ * 「今天没吃任何甜的东西」和「今天一条都没标糖」不是同一句话，
+ * 后者说成 0 就是给了一句没有依据的放心话。
+ *
+ * 这几条一起钉住的正是「同一个字段，两种缺失语义」这件事 ——
+ * 谁要是好心把 `sugar` 那几行"统一"成钠的写法，下面会当场红。
+ */
+describe("添加糖 · 缺失语义与钠不同（但一条都没有时仍是未知）", () => {
+  const JAM: FoodItem = {
+    id: "t-jam",
+    name: "测试草莓酱",
+    category: "snack",
+    unit: "g",
+    kcal: 250,
+    protein: 0.4,
+    fat: 0.1,
+    carb: 60,
+    sugar: 48,
+    source: "测试夹具（模拟拍照读到的标签）",
+  };
+  const NO_SUGAR: FoodItem = {
+    id: "t-plain",
+    name: "测试白饭",
+    category: "staple",
+    unit: "g",
+    kcal: 116,
+    protein: 2.6,
+    fat: 0.3,
+    carb: 25.9,
+    source: "测试夹具",
+  };
+
+  it("nutritionOf：标了糖就折算，没标就保持 undefined（不折成 0）", () => {
+    assert.equal(nutritionOf(JAM, 50).sugar, 24); // 48 × 0.5
+    assert.equal(nutritionOf(NO_SUGAR, 50).sugar, undefined);
+  });
+
+  it("scaleNutrition / roundValues 同样让未知保持未知", () => {
+    assert.equal(scaleNutrition({ kcal: 100, protein: 1, fat: 1, carb: 1, sugar: 10 }, 2).sugar, 20);
+    assert.equal(scaleNutrition({ kcal: 100, protein: 1, fat: 1, carb: 1 }, 2).sugar, undefined);
+    assert.equal(roundValues({ kcal: 1, protein: 1, fat: 1, carb: 1, sugar: 12.3456789 }).sugar, 12.3);
+    assert.equal(roundValues({ kcal: 1, protein: 1, fat: 1, carb: 1 }).sugar, undefined);
+  });
+
+  it("⚠ addNutrition：一边有糖一边没标 → 取有糖那个（没标 = 没加糖）", () => {
+    const withSugar = { kcal: 10, protein: 1, fat: 1, carb: 1, sugar: 12 };
+    const noSugar = { kcal: 10, protein: 1, fat: 1, carb: 1 };
+    assert.equal(addNutrition(withSugar, noSugar).sugar, 12);
+    assert.equal(addNutrition(noSugar, withSugar).sugar, 12);
+    assert.equal(addNutrition(withSugar, { ...noSugar, sugar: 8 }).sugar, 20);
+    // 两边都没标才是"未知" —— 但注意这与钠的"两边都缺"不是一回事，见下一条
+    assert.equal(addNutrition(noSugar, noSugar).sugar, undefined);
+  });
+
+  it("⚠ 一个配料有糖、另一个没标 → 总和 = 有糖那个（§2.2 的核心）", () => {
+    const withSugar: DietEntry = {
+      ...entry(foodById("shupian")!, 70, { id: "sugar-yes" }),
+      nutrition: { kcal: 200, protein: 1, fat: 1, carb: 20, sugar: 12 },
+    };
+    const noSugar: DietEntry = {
+      ...entry(foodById("shupian")!, 70, { id: "sugar-no" }),
+      nutrition: { kcal: 200, protein: 1, fat: 1, carb: 20 },
+    };
+
+    const t = sumNutrition([withSugar, noSugar]);
+    assert.equal(t.values.sugar, 12, "没标的那条按 0 计入，而不是让总和变成「未知」");
+
+    // 同一批记录若换成钠，那就是"未知" —— 这就是两种缺失语义的差别，不是实现不一致
+    assert.equal(t.values.sodium, undefined);
+    assert.equal(t.sodiumCoverage, 0);
+  });
+
+  it("⚠ 一条糖数据都没有 → undefined，不是 0", () => {
+    const noSugar: DietEntry = {
+      ...entry(foodById("shupian")!, 70, { id: "sugar-no" }),
+      nutrition: { kcal: 200, protein: 1, fat: 1, carb: 20 },
+    };
+    const t = sumNutrition([noSugar, noSugar]);
+    assert.equal(t.values.sugar, undefined, "「都没标糖」必须给未知，给 0 是在替用户下结论");
+    assert.equal(t.sugarCoverage, 0);
+    // 别的项照常算出来
+    assert.equal(t.values.kcal, 400);
+
+    const empty = sumNutrition([]);
+    assert.equal(empty.values.sugar, undefined);
+    assert.equal(empty.sugarCoverage, 0);
+  });
+
+  it("sugarCoverage = 标了糖的条数 / 总条数", () => {
+    const mk = (id: string, sugar?: number): DietEntry => ({
+      ...entry(foodById("shupian")!, 70, { id }),
+      nutrition: { kcal: 200, protein: 1, fat: 1, carb: 20, ...(sugar === undefined ? {} : { sugar }) },
+    });
+    const t = sumNutrition([mk("a", 12), mk("b"), mk("c", 8), mk("d")]);
+    assert.equal(t.sugarCoverage, 0.5);
+    assert.equal(t.values.sugar, 20); // 12 + 8，另两条按 0
+  });
+
+  it("目标只有理想值 25g（上限 50 只在说明里说，不占第二档）", () => {
+    const targets = calcNutritionTargets(PROFILE);
+    assert.equal(targets.sugar, SUGAR_IDEAL_G);
+    assert.equal(targets.sugar, 25);
+  });
+
+  it("糖是「别超」型：≤25 判 ok，超了就判 high", () => {
+    const targets = calcNutritionTargets(PROFILE);
+    const mk = (sugar: number) => {
+      const e: DietEntry = {
+        ...entry(foodById("shupian")!, 70, { id: `s-${sugar}` }),
+        nutrition: { kcal: 800, protein: 5, fat: 5, carb: 100, sugar },
+      };
+      return sumNutrition([e]);
+    };
+
+    const ok = compareToTargets(mk(12), targets).find((x) => x.key === "sugar")!;
+    assert.equal(ok.direction, "atMost");
+    assert.equal(ok.verdict, "ok");
+
+    const high = compareToTargets(mk(60), targets).find((x) => x.key === "sugar")!;
+    assert.equal(high.verdict, "high");
+  });
+
+  it("没有糖数据时**不硬判**：判 unknown，并明说「没有数据 ≠ 0」", () => {
+    const targets = calcNutritionTargets(PROFILE);
+    const e: DietEntry = {
+      ...entry(foodById("shupian")!, 70, { id: "no-sugar" }),
+      nutrition: { kcal: 800, protein: 5, fat: 5, carb: 100 },
+    };
+    const sugar = compareToTargets(sumNutrition([e]), targets).find((x) => x.key === "sugar")!;
+    assert.equal(sugar.verdict, "unknown");
+    assert.match(sugar.note!, /没有数据 ≠ 0/);
+  });
+
+  it("⚠ 措辞必须挂「已记录的」—— 说成「今天糖摄入」是把局部数据说成全天", () => {
+    const targets = calcNutritionTargets(PROFILE);
+    const mk = (sugar?: number): DietEntry => ({
+      ...entry(foodById("shupian")!, 70, { id: `w-${sugar}` }),
+      nutrition: { kcal: 800, protein: 5, fat: 5, carb: 100, ...(sugar === undefined ? {} : { sugar }) },
+    });
+
+    // 覆盖率 100% 与 50% 两条分支都要挂这四个字（糖不因为"覆盖率高"就不加话，与钠/纤维相反）
+    for (const [list, cov] of [
+      [[mk(12)], 1],
+      [[mk(12), mk()], 0.5],
+    ] as [DietEntry[], number][]) {
+      const t = sumNutrition(list);
+      assert.equal(t.sugarCoverage, cov);
+      const note = compareToTargets(t, targets).find((x) => x.key === "sugar")!.note ?? "";
+      assert.match(note, /已记录的添加糖/, `覆盖率 ${cov} 时少了限定语：${note}`);
+      assert.doesNotMatch(note, /^今天糖摄入/);
+    }
   });
 });
 

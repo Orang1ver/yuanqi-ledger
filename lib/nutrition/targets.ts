@@ -32,6 +32,17 @@ const FIBER_PER_1000KCAL = 12;
 const FIBER_FLOOR_G = 25;
 
 /**
+ * 《中国居民膳食指南 2022》：每天添加糖不超过 50 g，最好控制在 25 g 以下。
+ *
+ * ⚠️ **两个数都要留着，但它们不是"两档目标"**：进度条画到理想值 25 g，
+ * 上限 50 g 只出现在 `describeTargets` 的那句说明里。
+ * 为什么不给 50 也做一档：进度条上并排画两条线，用户只会问"我到底该看哪条"；
+ * 而这两条线差着一倍，任何一个单一判据都会在中间那段给出误导。
+ */
+export const SUGAR_IDEAL_G = 25;
+export const SUGAR_LIMIT_G = 50;
+
+/**
  * 由「总热量 + 蛋白目标」推出其余各项。
  *
  * 单独抽出来，是因为除了健康档案之外还有别的场景需要目标
@@ -42,7 +53,9 @@ export function targetsFromEnergy(kcal: number, proteinG: number, sodiumMg = SOD
   const fat = Math.round((kcal * FAT_ENERGY_SHARE) / 9);
   const carb = Math.max(0, Math.round((kcal - proteinG * 4 - fat * 9) / 4));
   const fiber = Math.round(Math.max(FIBER_FLOOR_G, (kcal / 1000) * FIBER_PER_1000KCAL));
-  return { kcal, protein: proteinG, fat, carb, sodium: sodiumMg, fiber };
+  // 添加糖与热量**无关**：指南给的是绝对值（25 / 50 g），不随你吃多少 kcal 浮动。
+  // 所以这里是个常量，而 progress 画的是「已记录的添加糖 ÷ 25」。
+  return { kcal, protein: proteinG, fat, carb, sodium: sodiumMg, fiber, sugar: SUGAR_IDEAL_G };
 }
 
 export function calcNutritionTargets(p: HealthProfile): NutritionTargets {
@@ -81,6 +94,9 @@ export function describeTargets(t: NutritionTargets, p: HealthProfile): string {
     `碳水 ${t.carb} g：吃掉蛋白与脂肪之外的剩余份额。`,
     `钠 ≤ ${t.sodium} mg：相当于每天食盐不超过 5 g。`,
     `膳食纤维 ≥ ${t.fiber} g。`,
+    // 「只统计标了糖的…」这半句不能省：糖的数据覆盖率天然很低（内置库不回填），
+    // 不说清口径的话，一个「已记录的添加糖 12g」会被读成"今天总共只吃了 12g 糖"。
+    `添加糖 ≤ ${SUGAR_IDEAL_G} g（最好），上限 ${SUGAR_LIMIT_G} g —— 只统计标了糖的包装食品与做菜加的糖。`,
     "",
     "这些是公式估算值，个体差异可达 ±15%。用两三周的实际体重变化反推会更准。",
   ].join("\n");

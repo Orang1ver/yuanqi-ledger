@@ -77,6 +77,16 @@ export const KEYS = {
    */
   customFoods: "recipe.customFoods.v1",
   /**
+   * 用户的自做菜谱（`MyRecipe[]`）。
+   * ⚠️ 与「我的食物库」分开：食物是"一种食材/一份成品"，菜谱是"由若干食材按克数组合而成"，
+   * 前者是一行数据、后者是一张表。
+   * 形状刻意照 data/foodRecipes.json，将来申请进正式库时能直接复用它的重算逻辑。
+   *
+   * 已核对：`myRecipes` 与既有全部键**无子串重叠**（不会与 `customFoods` 互抢，
+   * 也不会被 `describeBackup` 的 `has(...)` 误判成别的分组）。
+   */
+  myRecipes: "recipe.myRecipes.v1",
+  /**
    * 久未备份提醒的状态：第一次打开 / 上次导出备份 / 静默期。
    * ⚠️ 这是**应用元数据**，不是用户记录 —— 所以刻意**不进** `describeBackup`
    * 的导入预览（同 `iosInstallHintDismissed` / `updateBannerDismissed`）。

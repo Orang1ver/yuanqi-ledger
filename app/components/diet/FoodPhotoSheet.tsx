@@ -55,6 +55,8 @@ type NumDraft = {
   fat: string;
   carb: string;
   sodium: string;
+  /** 标签上单列的「糖」。空串 = 这条标签没印糖（**不是 0**） */
+  sugar: string;
 };
 
 function numToText(v: number | undefined): string {
@@ -78,6 +80,7 @@ function draftFrom(r: FoodReading): NumDraft {
     fat: numToText(r.fat_g),
     carb: numToText(r.carb_g),
     sodium: numToText(r.sodium_mg),
+    sugar: numToText(r.sugar_g),
   };
 }
 
@@ -119,6 +122,7 @@ export function FoodPhotoSheet({
     fat: "",
     carb: "",
     sodium: "",
+    sugar: "",
   });
   /** 这一次吃掉的量。字符串 state（地雷 5） */
   const [gramsText, setGramsText] = useState("100");
@@ -202,6 +206,9 @@ export function FoodPhotoSheet({
       carb: textToNum(nums.carb) ?? 0,
       // 「没读到」保持 undefined，不补 0（地雷 11）
       ...(textToNum(nums.sodium) === undefined ? {} : { sodium: textToNum(nums.sodium) }),
+      // 添加糖同款：标签没印这一行就**不写这个键**，保持对象干净 ——
+      // 写 0 会被后面当成"这条标了糖，值是 0"，而事实是"我们不知道"（旧标签不强制标糖）。
+      ...(textToNum(nums.sugar) === undefined ? {} : { sugar: textToNum(nums.sugar) }),
       source: isEstimate
         ? "AI 估算（仅凭外观推测，不可核对）"
         : "包装营养成分表（拍照读取，已过闭合校验）",
@@ -249,6 +256,7 @@ export function FoodPhotoSheet({
           fat: textToNum(nums.fat) ?? 0,
           carb: textToNum(nums.carb) ?? 0,
           sodium: textToNum(nums.sodium),
+          sugar: textToNum(nums.sugar),
           source: "预览",
         } as FoodItem);
   const previewKcal =
@@ -456,6 +464,8 @@ export function FoodPhotoSheet({
                       ["protein", "蛋白质 g", false],
                       ["fat", "脂肪 g", false],
                       ["carb", "碳水 g", false],
+                      // 「添加糖（可选）」紧跟碳水之后：标签上也印在碳水下面一行
+                      ["sugar", "添加糖 g（可选）", false],
                       ["sodium", "钠 mg", false],
                     ] as const
                   ).map(([key, label, required]) => (
@@ -474,6 +484,10 @@ export function FoodPhotoSheet({
                     </div>
                   ))}
                 </div>
+                <p className="yq-hint" style={{ marginBottom: 4 }}>
+                  添加糖：标签上单列了「糖」才填；没印就留空。
+                  <strong>别拿「碳水化合物」当糖</strong> —— 淀粉不是添加糖。
+                </p>
                 <p className="yq-hint" style={{ marginBottom: 12 }}>
                   读不到的项<strong>留空</strong>就行 —— 留空表示「没有这个数据」，和填 0 不是一回事。
                 </p>

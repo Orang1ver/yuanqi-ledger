@@ -256,9 +256,9 @@
     { "id": "cu", "name": "醋", "alias": ["陈醋", "米醋"], "category": "seasoning", "unit": "ml", "kcal": 31, "protein": 2.1, "fat": 0.3, "carb": 4.9, "sodium": 262, "source": "通用成分值" },
     { "id": "doubanjiang", "name": "豆瓣酱", "category": "seasoning", "unit": "g", "kcal": 178, "protein": 13.6, "fat": 6.8, "carb": 17.1, "sodium": 6012, "source": "通用成分值" },
     { "id": "tianmianjiang", "name": "甜面酱", "category": "seasoning", "unit": "g", "kcal": 136, "protein": 5.5, "fat": 0.6, "carb": 28.1, "sodium": 2097, "source": "通用成分值" },
-    { "id": "baitang", "name": "白砂糖", "alias": ["白糖", "糖"], "category": "seasoning", "unit": "g", "kcal": 400, "protein": 0.0, "fat": 0.0, "carb": 99.9, "sodium": 0, "source": "通用成分值（纯糖）" },
+    { "id": "baitang", "name": "白砂糖", "alias": ["白糖", "糖"], "category": "seasoning", "unit": "g", "kcal": 400, "protein": 0.0, "fat": 0.0, "carb": 99.9, "sugar": 99.9, "sodium": 0, "source": "通用成分值（纯糖）" },
     {"id": "galifen","name": "咖喱粉","alias": ["咖喱"],"category": "seasoning","unit": "g","kcal": 338.4,"protein": 13,"fat": 12.2,"carb": 63.3,"sodium": 40,"fiber": 36.9,"source": "中国食物成分表（编号 1580）"},
-    { "id": "fengmi", "name": "蜂蜜", "category": "seasoning", "unit": "g", "kcal": 321, "protein": 0.4, "fat": 1.9, "carb": 75.6, "sodium": 0, "source": "通用成分值" },
+    { "id": "fengmi", "name": "蜂蜜", "category": "seasoning", "unit": "g", "kcal": 321, "protein": 0.4, "fat": 1.9, "carb": 75.6, "sugar": 75.6, "sodium": 0, "source": "通用成分值" },
     { "id": "yan", "name": "盐", "alias": ["食盐", "精盐"], "category": "seasoning", "unit": "g", "kcal": 0, "protein": 0.0, "fat": 0.0, "carb": 0.0, "sodium": 39311, "source": "通用成分值（纯盐）" },
 
     { "id": "pijiu", "name": "啤酒", "category": "alcohol", "unit": "ml", "kcal": 32, "protein": 0.3, "fat": 0.0, "carb": 3.5, "sodium": 11, "source": "通用成分值（含酒精，热量含乙醇）" },

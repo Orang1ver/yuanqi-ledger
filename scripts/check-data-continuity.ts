@@ -103,6 +103,9 @@ async function main() {
   const { sortWeights, deltaVsPrevious } = await import("../lib/weight");
   const { exerciseStats, pendingMilestones } = await import("../lib/exercise");
   const { readinessOfWeek } = await import("../lib/weekly");
+  // 糖（添加糖）那两条检查要用：纯计算 + 内置库取一条食物
+  const { nutritionOf, sumNutrition } = await import("../lib/nutrition/core");
+  const { foodById } = await import("../lib/nutrition/library");
 
   check("健康档案", () => {
     const p = health.loadHealthProfile();
@@ -264,6 +267,71 @@ async function main() {
     return "缺 dishId 的老记录读得出、也不算吃过；带 dishId 的才进「最近吃过」";
   });
 
+  check("饮食日记 · 老记录没有 sugar（新增的可选营养素字段）", () => {
+    /*
+     * `NutritionValues.sugar`（添加糖）是随自做饭菜一起加的。它与 `dishId` 同一性质：
+     * **老记录一条都没有这个字段，而那是正常且永久的状态** —— 不许因为缺它就跳过记录，
+     * 更不许顺手回填 0。
+     *
+     * ⚠️ 这里钉的是那条最容易被"顺手改掉"的边界：**没有糖数据 ≠ 糖是 0**。
+     * 一旦有人把缺失当 0 求和，「今天添加糖 3g」这种话就会在数据全无的一天说出来 ——
+     * 那正是这个模块最反对的假精确。
+     */
+    const old: DietEntry[] = [
+      {
+        id: "old-sugar-1",
+        date: "2026-09-17",
+        time: "12:00",
+        mealSlot: "午餐",
+        foodId: "rice-cooked",
+        name: "米饭",
+        category: "staple",
+        amount: 1,
+        unitLabel: "碗",
+        grams: 250,
+        nutrition: { kcal: 290, protein: 6.5, fat: 0.8, carb: 63.8 },
+        source: "db",
+        createdAt: Date.parse("2026-09-17T12:00:00.000Z"),
+      },
+    ];
+    localStorage.setItem(KEYS.dietLog, JSON.stringify(old));
+    const back = diet.loadDietEntries();
+    assert.equal(back.length, 1, "缺 sugar 的老记录必须照样读得出来");
+    assert.equal(back[0].nutrition.sugar, undefined, "不许给老记录补一个糖值");
+
+    // 一条糖数据都没有 → 总量是 undefined，**不是 0**
+    const none = sumNutrition(back);
+    assert.equal(none.values.sugar, undefined);
+    assert.equal(none.sugarCoverage, 0);
+
+    // 混着来：有糖的那条进总和，没标的按 0 计（"没标 = 没加糖"，见 core.ts 的 addNutrition）
+    const mixed = sumNutrition([
+      ...back,
+      { ...back[0], id: "new-sugar-1", nutrition: { ...back[0].nutrition, sugar: 12 } },
+    ]);
+    assert.equal(mixed.values.sugar, 12);
+    assert.equal(mixed.sugarCoverage, 0.5);
+    return "缺 sugar 的老记录读得出、也不被补 0；一条都没有时总量是 undefined 而不是 0";
+  });
+
+  check("老 FoodItem 没有 sugar · 折算时不报错、也不当 0", () => {
+    // 内置库**只给纯糖类补了糖值**（白砂糖 99.9 / 蜂蜜 75.6），其余 248 条一条不动 ——
+    // 糖的两个入口仍是拍照识别与做菜加的糖，对普通食物"没标"就是"没加糖"。
+    // 所以"取一个**没有**糖值的内置食物、算它的糖"这条路必须安静地给出 undefined。
+    const chips = foodById("shupian");
+    assert.ok(chips, "读不到 shupian");
+    assert.equal(chips.sugar, undefined, "普通食物不该被回填糖值");
+
+    const n = nutritionOf(chips, 70);
+    assert.equal(n.sugar, undefined, "不该把缺失折成 0");
+    assert.ok(n.kcal > 0, "其它项的折算不受影响");
+
+    // 带了糖的（拍照读来的）照常折算 —— 这条路由 T4 产生
+    const shot = { ...chips, sugar: 9 };
+    assert.equal(Math.round((nutritionOf(shot, 70).sugar ?? 0) * 10) / 10, 6.3);
+    return "老 FoodItem 缺 sugar → undefined（不是 0）；带糖的按克数折算正常";
+  });
+
   check("常用食材 / 偏好笔记 / 周分析", () => {
     assert.equal(meals.loadCommonIngredients().length, 1);
     assert.equal(meals.loadUserProfile()?.content, "不爱吃香菜");
@@ -289,8 +357,8 @@ async function main() {
 
   // 「一顿饭」预设引用的食物 id 必须都真实存在 —— 预设里一旦出现死引用，
   // 用户点下去就是一条落不下来的记录，这个坑要在这里拦掉。
+  // （`foodById` 在 main 开头已经导入过了，这里不再导一次 —— 重复声明会编译不过。）
   const { MEAL_PRESETS, mealPresetFoodIds } = await import("../lib/mealPresets");
-  const { foodById } = await import("../lib/nutrition/library");
 
   // 自证这个关卡也会拦人：把第一个预设的第一个食物 id 改成库里不存在的，
   // 「一顿饭预设完整性」必须报 ✗（配合上面的健康档案破坏一起自证整条闸门不是摆设）。

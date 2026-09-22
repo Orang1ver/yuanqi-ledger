@@ -43,6 +43,7 @@ import { loadApiKeys } from "@/lib/prefs";
 import { FoodPhotoSheet } from "./FoodPhotoSheet";
 import { FoodSearchDialog } from "./FoodSearchDialog";
 import { PortionChips } from "./PortionChips";
+import { RecipeSheet } from "./RecipeSheet";
 import type { PortionValue } from "./PortionPicker";
 
 type Row = {
@@ -144,6 +145,8 @@ export function QuickAddCard({ date }: { date: string }) {
   const [presetOpen, setPresetOpen] = useState(false);
   /** 打开拍照识别面板时的预填名字 */
   const [photoFor, setPhotoFor] = useState<string | null>(null);
+  /** 「我的菜谱」面板是否打开 */
+  const [recipesOpen, setRecipesOpen] = useState(false);
 
   // 用户自己的食物库。读一次给整棵子树用。
   const customFoods = loadCustomFoods();
@@ -271,6 +274,11 @@ export function QuickAddCard({ date }: { date: string }) {
         </button>
         <button className="yq-btn yq-btn-sm" onClick={() => setPresetOpen((v) => !v)}>
           一顿饭
+        </button>
+        {/* 我的菜谱：**纯本地功能，与有没有填 Key 无关** ——
+            所以它不像「📷 拍照添加」那样受 hasPhotoKey 限制，永远显示。 */}
+        <button className="yq-btn yq-btn-sm" onClick={() => setRecipesOpen(true)}>
+          我的菜谱
         </button>
       </div>
 
@@ -511,6 +519,20 @@ export function QuickAddCard({ date }: { date: string }) {
           hintName={photoFor || undefined}
           onClose={() => setPhotoFor(null)}
           onSaved={(f) => setMsg(`已存进「我的食物库」并记一笔：${f.name} → ${slot}`)}
+        />
+      )}
+
+      {recipesOpen && (
+        <RecipeSheet
+          date={date}
+          slot={slot}
+          onClose={() => setRecipesOpen(false)}
+          // 记账成功就把整块面板收起来，让用户看得见上面那句确认 ——
+          // 不收的话提示被遮罩挡着，他还以为没记上。
+          onMsg={(m) => {
+            setMsg(m);
+            setRecipesOpen(false);
+          }}
         />
       )}
     </section>

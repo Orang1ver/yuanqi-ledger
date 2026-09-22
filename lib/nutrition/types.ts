@@ -61,6 +61,15 @@ export function categoryLabel(c: FoodCategory | undefined): string {
  * 把未知当 0 求和，会让「今天钠摄入 1200mg」这种结论在数据不全时变成谎言 ——
  * 而这类 App 最常见的说谎方式正是如此。
  * 求和时遇到 undefined 会跳过，并由 `coverage` 显式报告有多少条目缺这块数据。
+ *
+ * ⚠️ **`sugar`（添加糖）的缺失语义与它俩不一样，别照抄。**
+ * 「添加糖」按定义只来自两个地方 —— 包装标签上单列的「糖」、做菜时加的糖。
+ * 一个配料没标糖，含义就是**它没加糖**，而不是"我们不知道它加了多少"。
+ * 所以求和时把它按 0 计入是对的（`addNutrition` 的 `opt` 恰好就是这行为，**代码不用改**），
+ * 但仍然守住两条边界：① 一条糖数据都没有时，总量必须是 `undefined` 而不是 0
+ * （由 `sumNutrition` 的 `sugarKnown` 保证）；② 界面只能说「**已记录的**添加糖 Xg」，
+ * 不能说「今天糖摄入 Xg」—— 因为只统计了标了糖的那些记录。
+ * 完整理由见 `core.ts` 里 `addNutrition` 的注释。
  */
 export type NutritionValues = {
   kcal: number;
@@ -71,6 +80,8 @@ export type NutritionValues = {
   sodium?: number;
   /** 膳食纤维 g。undefined = 暂无数据 */
   fiber?: number;
+  /** 添加糖 g。undefined = 这条没标（≠ 0，但求和时按 0 计入 —— 见类型头注释与 core.ts 的 addNutrition） */
+  sugar?: number;
 };
 
 export const EMPTY_NUTRITION: NutritionValues = {
@@ -116,6 +127,22 @@ export type FoodItem = {
   carb: number;
   sodium?: number;
   fiber?: number;
+  /**
+   * 添加糖 g/100g。
+   *
+   * ⚠️ **主要由两个入口产生**：① 拍照识别（包装标签上单列的「糖」）
+   * ② 做菜时加的糖（自做菜谱里那些 `baitang` 配料）。
+   * **内置库只给纯糖类那两条补了值**（白砂糖 99.9 / 蜂蜜 75.6 —— 它们的糖值是定义性的），
+   * 其余二百多条一条不动：这个字段是给"新入口"用的，不是给全库回填的，
+   * 所以它大面积为空仍是**预期状态**，不是"实现没做完"（界面措辞必须体现这一点）。
+   *
+   * ⚠️ **绝不能用「碳水」估糖**（一碗米饭的碳水几乎全是淀粉）。
+   * 宁可这一项空着，也不要一个看起来专业、实际没有依据的数字 ——
+   * 这正是本层（以及质量分）最反对的那种假精确。
+   *
+   * 缺失的语义与 `sodium` / `fiber` **不同**，见 `NutritionValues` 的头注释。
+   */
+  sugar?: number;
   /**
    * 数值来源。**必填，不许留空** —— 热量本来就是估算，
    * 标不清依据就没法在出错时追溯。例：「通用成分值」「品牌官方营养表」
@@ -232,6 +259,19 @@ export type NutritionTotals = {
   sodiumCoverage: number;
   /** 有明确纤维数据的条目占比 0..1 */
   fiberCoverage: number;
+  /**
+   * 有明确**添加糖**数据的条目占比 0..1。
+   *
+   * ⚠️ **这个数与 `sodiumCoverage` 语义相同、求和行为不同，不要"顺手统一"。**
+   * 钠/纤维缺了是"不知道"，求和时必须跳过；而添加糖缺了是"没加糖"，
+   * `sumNutrition` 把它按 0 计入总和是**有意**的（见 `NutritionValues` 头注释）。
+   *
+   * 这个 coverage 的用处**不是**给总和打折，而是**限制界面措辞**：
+   * 只有 20% 的记录标了糖时，不能说「今天糖摄入 12g」，只能说
+   * 「**已记录的**添加糖 12g（基于 20% 的记录）」。覆盖率低到 0 时，
+   * 总量是 `undefined`，界面必须说"数据不足"而不是画一根 0 的条。
+   */
+  sugarCoverage: number;
 };
 
 // ---------- 目标 ----------
@@ -249,6 +289,14 @@ export type NutritionTargets = {
   sodium: number;
   /** g */
   fiber: number;
+  /**
+   * 添加糖理想值 g（膳食指南 2022：理想 ≤25g / 上限 ≤50g）。
+   *
+   * ⚠️ 这里**只放理想值 25**，上限 50 写进 `describeTargets` 的那句话里，
+   * 不引入"两档目标"的结构 —— 进度条画到 25 就够说明问题了，
+   * 为一个不上进度条的 50 多开一层结构，只会让每个读它的人多认一个概念。
+   */
+  sugar: number;
 };
 
 /**
@@ -259,7 +307,7 @@ export type NutritionTargets = {
 export type TargetDirection = "band" | "atLeast" | "atMost";
 
 export type NutrientStatus = {
-  key: "kcal" | "protein" | "fat" | "carb" | "sodium" | "fiber";
+  key: "kcal" | "protein" | "fat" | "carb" | "sodium" | "fiber" | "sugar";
   label: string;
   /** 实际摄入 */
   intake: number;
