@@ -11,6 +11,8 @@
  */
 
 export const KEYS = {
+  /** 微信步数的本机读取凭证。应用元数据，不进入导出备份；清空数据时一起移除。 */
+  werunConnection: "recipe.werunConnection.v1",
   /** 常用食材清单 */
   ingredients: "recipe.commonIngredients.v1",
   /** 一餐饭的记录 */

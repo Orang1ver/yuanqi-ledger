@@ -46,6 +46,7 @@ const storage = new MemoryStorage();
 import { KEYS } from "./keys";
 import {
   BACKUP_APP_NAME,
+  exportBackup,
   describeBackupDetail,
   importBackup,
   peekImportUndo,
@@ -53,6 +54,35 @@ import {
   undoImport,
 } from "./backup";
 
+it("微信连接凭证不进入任何导出备份，步数记录正常导出", () => {
+  storage.clear();
+  storage.setItem(KEYS.werunConnection, JSON.stringify({ token: "private-credential" }));
+  storage.setItem(KEYS.dailyCheckins, JSON.stringify({ "2026-10-03": { steps: 1234 } }));
+  for (const includeApiKey of [true, false]) {
+    const result = exportBackup(includeApiKey);
+    assert.equal(result.data[KEYS.werunConnection], undefined);
+    assert.ok(result.data[KEYS.dailyCheckins]);
+  }
+  storage.clear();
+});
+
+it("撤销快照导出时也排除微信凭证，本机撤销仍能恢复连接", () => {
+  storage.clear();
+  storage.setItem(KEYS.werunConnection, JSON.stringify({ token: "snapshot-private-credential" }));
+  storage.setItem(KEYS.dailyCheckins, JSON.stringify({ "2026-10-03": { steps: 1234 } }));
+  pushImportUndo();
+  for (const includeApiKey of [true, false]) {
+    const result = exportBackup(includeApiKey);
+    assert.ok(!JSON.stringify(result).includes("snapshot-private-credential"));
+    const exportedSnapshot = JSON.parse(result.data[KEYS.importUndo]);
+    assert.equal(exportedSnapshot.data[KEYS.werunConnection], undefined);
+    assert.ok(exportedSnapshot.data[KEYS.dailyCheckins]);
+  }
+  storage.removeItem(KEYS.werunConnection);
+  undoImport();
+  assert.ok(storage.getItem(KEYS.werunConnection)?.includes("snapshot-private-credential"));
+  storage.clear();
+});
 /** 造一份备份文本。`data` 的每个值会被序列化成字符串 —— 与真实导出格式一致 */
 function backupText(
   data: Record<string, unknown>,

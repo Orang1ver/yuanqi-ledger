@@ -1,13 +1,9 @@
 /**
  * 喝水与步数的换算、进度、文案。
  *
- * 步数为什么只能手动录？
- * - 微信运动 `wx.getWeRunData` 只在微信小程序内可用，H5 调不到，且返回加密数据必须后端解密。
- * - 华为 Health Kit 有 Cloud REST API，但要开发者账号、要审核、换 token 要 client_secret（必须有后端）。
- * - 小米手环没有面向第三方的官方 API。
- * - iOS HealthKit / Android Health Connect 都只能在**原生 App 内**调用。
- * 结论：网页架构下只能手动。将来若加 Capacitor 壳，就在 fetchStepsFromSource 里实现即可，
- * 改动集中在下面这一个函数。
+ * 默认手动录入。可选的微信步数同步见 lib/werun.ts 与 WeRunSync：
+ * 小程序取数、云函数保存，账本按日期预览并经用户点击后替换。
+ * 不在此处静默获取或覆盖数据；原生健康数据目前未接入。
  */
 
 export type StepSource = "manual";

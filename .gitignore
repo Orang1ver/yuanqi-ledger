@@ -1,5 +1,7 @@
 # dependencies
 /node_modules
+wechat/**/node_modules/
+wechat/project.private.config.json
 /.pnp
 .pnp.*
 

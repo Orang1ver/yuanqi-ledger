@@ -1,0 +1,9 @@
+{
+  "description": "元气账本微信步数助手",
+  "miniprogramRoot": "miniprogram/",
+  "cloudfunctionRoot": "cloudfunctions/",
+  "compileType": "miniprogram",
+  "appid": "wx573774b26050a14f",
+  "projectname": "yuanqi-werun",
+  "setting": { "es6": true, "minified": true, "urlCheck": true }
+}

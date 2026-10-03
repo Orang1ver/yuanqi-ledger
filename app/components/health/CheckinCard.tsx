@@ -18,6 +18,7 @@ import { evaluateCheckin, hasCelebrated, settleCheckin, type Badge } from "@/lib
 import type { DailyCheckin, Mood } from "@/lib/types";
 import { ProgressRing } from "../shell/ProgressRing";
 import { RewardDialog } from "../shell/RewardDialog";
+import { WeRunSync } from "./WeRunSync";
 
 /**
  * 今日打卡卡：喝水 / 步数 / 睡眠 / 心情。
@@ -211,6 +212,8 @@ export function CheckinCard() {
           </div>
         </div>
       </div>
+
+      <WeRunSync key={date} date={date} onApply={(steps) => update({ steps })} />
 
       <hr style={{ border: 0, borderTop: "1px solid var(--yq-line)", margin: "16px 0" }} />
 

@@ -4,6 +4,7 @@
   "private": true,
   "description": "元气账本 —— 记录吃、喝、动、睡的个人健康账本",
   "scripts": {
+    "test:werun": "node scripts/run-ts.mjs lib/werun.test.ts lib/storage/backup.test.ts --test && node --test wechat/cloudfunctions/werun/core.test.cjs",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",

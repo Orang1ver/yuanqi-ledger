@@ -5,6 +5,11 @@ import nextTs from "eslint-config-next/typescript";
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
+  {
+    files: ["wechat/**/*.js", "wechat/**/*.cjs"],
+    languageOptions: { globals: { wx: "readonly", App: "readonly", Page: "readonly" } },
+    rules: { "@typescript-eslint/no-require-imports": "off" },
+  },
   globalIgnores([
     ".next/**",
     "out/**",

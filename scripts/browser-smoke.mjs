@@ -30,6 +30,8 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { checkWeRun } from "./browser-werun.mjs";
+
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 function arg(name, fallback) {
@@ -2702,6 +2704,8 @@ try {
 
   // 同上一类：stub fetch + 伪造 navigator.userAgent（用完自己清掉），也放最后
   await checkAndroidApkEntry(page, BASE_URL, failures);
+
+  await checkWeRun(page, BASE_URL, failures, { goto, evaluate, sleep, screenshotPath: join(OUT_DIR, "werun.png") });
 
   if (failures.length) {
     console.log(`\n✗ ${failures.length} 个页面没显示出应有的内容（数据来源：${seedLabel}）：`);
