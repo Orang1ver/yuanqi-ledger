@@ -1,19 +1,14 @@
 import { writeFileSync } from "node:fs";
 
-/** 微信步数的真实浏览器交互检查；仅使用隔离浏览器与模拟接口，不访问生产步数。 */
+/** 隔离浏览器中的批量同步检查，模拟接口不访问生产步数。 */
 export async function checkWeRun(page, baseUrl, failures, { goto, evaluate, sleep, screenshotPath }) {
   await goto(page, `${baseUrl}/?werun-smoke=${Date.now()}`);
   const enabled = await evaluate(page, `!![...document.querySelectorAll('summary')].find(e => e.textContent === '微信步数')`);
-  if (!enabled) {
-    console.log('· 微信步数：未配置接口，跳过交互检查');
-    return;
-  }
+  if (!enabled) { console.log('· 微信步数：未配置接口，跳过交互检查'); return; }
   await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
-  // 刻意先造数据再重载，避免依赖运行日期、历史样例或当前组件状态。
   await evaluate(page, `(() => {
-    const select = document.querySelector('section select');
-    const dates = [...select.options].map(o => o.value);
-    const rows = Object.fromEntries(dates.slice(0, 2).map((date, i) => [date,
+    const dates = [...document.querySelector('section select').options].map(o => o.value);
+    const rows = Object.fromEntries(dates.slice(0, 3).map((date, i) => [date,
       { date, steps: 1111 + i, waterMl: 750, sleepHours: 7.5, mood: '好', updatedAt: 1 }]));
     localStorage.setItem('recipe.dailyCheckins.v1', JSON.stringify(rows));
     localStorage.removeItem('recipe.werunConnection.v1');
@@ -23,98 +18,126 @@ export async function checkWeRun(page, baseUrl, failures, { goto, evaluate, slee
   await evaluate(page, `(() => {
     const select = document.querySelector('section select');
     const dates = [...select.options].map(o => o.value);
-    window.__werunTest = { dates, days: [{date: dates[1], steps: 5432}], status: 200, requests: 0, safe: true };
-    const original = window.fetch;
-    window.__werunOriginalFetch = original;
+    const old = new Date(dates[0]+'T12:00:00+08:00'); old.setUTCDate(old.getUTCDate()-20);
+    const historical = old.toISOString().slice(0,10);
+    window.__werunTest = { dates, historical, days: [
+      {date:dates[0],steps:3210}, {date:dates[1],steps:5432}, {date:historical,steps:0}
+    ], status:200, requests:0, safe:true };
+    window.__werunOriginalFetch = window.fetch;
     window.fetch = async (url, options) => {
-      if (!String(url).endsWith('/werun')) return original(url, options);
-      const t = window.__werunTest;
-      t.requests++;
-      t.safe &&= options.method === 'GET' && options.credentials === 'omit' && options.cache === 'no-store'
-        && options.redirect === 'error' && /^Bearer YQW1\\.[a-f0-9]{64}\\.[a-f0-9]{64}$/.test(options.headers.Authorization)
+      if (!String(url).endsWith('/werun')) return window.__werunOriginalFetch(url, options);
+      const t=window.__werunTest; t.requests++;
+      t.safe &&= options.method==='GET' && options.credentials==='omit' && options.cache==='no-store'
+        && options.redirect==='error' && /^Bearer YQW1\\.[a-f0-9]{64}\\.[a-f0-9]{64}$/.test(options.headers.Authorization)
         && !String(url).includes('YQW1');
-      if (t.networkError) throw new TypeError('Failed to fetch');
-      return new Response(JSON.stringify({days: t.days, syncedAt: Date.now()}), {status: t.status});
+      if(t.networkError) throw new TypeError('Failed to fetch');
+      return new Response(JSON.stringify({days:t.days,syncedAt:Date.now()}),{status:t.status});
     };
-    document.querySelector('section select').value = dates[1];
-    document.querySelector('section select').dispatchEvent(new Event('change', {bubbles:true}));
+    select.value=dates[1]; select.dispatchEvent(new Event('change',{bubbles:true}));
   })()`);
   await sleep(100);
-  const click = async (label) => {
-    const found = await evaluate(page, `(() => {
-      const button = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === ${JSON.stringify(label)});
-      if (!button || button.disabled) return false;
-      button.click(); return true;
+  const click = async label => {
+    const ok = await evaluate(page, `(() => {
+      const b=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===${JSON.stringify(label)});
+      if(!b || b.disabled) return false; b.click(); return true;
     })()`);
-    if (!found) throw new Error(`微信检查找不到可点击的「${label}」`);
+    if(!ok) throw new Error(`微信检查找不到可点击的「${label}」`);
     await sleep(150);
   };
   const read = () => evaluate(page, `JSON.parse(localStorage.getItem('recipe.dailyCheckins.v1'))`);
-  const expect = (ok, label) => { if (!ok) failures.push(`微信步数：${label}`); };
-  const initialFailures = failures.length;
+  const expect = (ok,label) => { if(!ok) failures.push(`微信步数：${label}`); };
+  const hasConfirm = () => evaluate(page, `!![...document.querySelectorAll('button')].find(b=>b.textContent.startsWith('确认替换 '))`);
+  const initialFailures=failures.length;
   try {
     await evaluate(page, `(() => {
-      [...document.querySelectorAll('summary')].find(e => e.textContent === '微信步数').click();
-      const input = document.querySelector('[aria-label="微信步数连接码"]');
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, 'YQW1.'+'a'.repeat(64)+'.'+'b'.repeat(64));
-      input.dispatchEvent(new Event('input', {bubbles:true}));
+      [...document.querySelectorAll('summary')].find(e=>e.textContent==='微信步数').click();
+      const input=document.querySelector('[aria-label="微信步数连接码"]');
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'YQW1.'+'a'.repeat(64)+'.'+'b'.repeat(64));
+      input.dispatchEvent(new Event('input',{bubbles:true}));
     })()`);
     await sleep(100);
-    const before = await read();
-    const dates = await evaluate(page, 'window.__werunTest.dates');
-    const selected = dates[1];
+    const before=await read();
+    const {dates,historical}=await evaluate(page, '({dates:window.__werunTest.dates,historical:window.__werunTest.historical})');
+    const selected=dates[1];
     await click('连接并读取');
-    expect(JSON.stringify(await read()) === JSON.stringify(before), '读取预览不能写入');
-    expect(await evaluate(page, `document.body.innerText.includes('${selected}：5432 步')`), '显示所选日期的步数预览');
-    expect(await evaluate(page, `!!localStorage.getItem('recipe.werunConnection.v1')`), '成功后保存本机连接');
-    if (screenshotPath && await evaluate(page, 'window.__werunTest.requests === 1')) {
-      await evaluate(page, `[...document.querySelectorAll('summary')].find(e => e.textContent === '微信步数').closest('details').scrollIntoView({block:'center'})`);
-      const shot = await page.send('Page.captureScreenshot', { format: 'png' });
-      writeFileSync(screenshotPath, Buffer.from(shot.data, 'base64'));
+    expect(JSON.stringify(await read())===JSON.stringify(before),'读取只预览不写入');
+    expect(await evaluate(page, `document.querySelector('[aria-label="微信步数批量预览"] tbody').rows.length===3`),'预览全部返回日期');
+    expect(await evaluate(page, `document.body.innerText.includes('未记录') && document.body.innerText.includes('${historical}')`),'未记录的历史日期也进入预览');
+    if(screenshotPath) {
+      await evaluate(page, `[...document.querySelectorAll('summary')].find(e=>e.textContent==='微信步数').closest('details').scrollIntoView({block:'center'})`);
+      const shot=await page.send('Page.captureScreenshot',{format:'png'});
+      writeFileSync(screenshotPath,Buffer.from(shot.data,'base64'));
     }
-    await click('替换这一天的步数');
-    let rows = await read();
-    expect(rows[selected].steps === 5432, '确认后替换所选日期');
-    expect(JSON.stringify(rows[dates[0]]) === JSON.stringify(before[dates[0]]), '其他日期完全不变');
-    expect(rows[selected].waterMl === 750 && rows[selected].sleepHours === 7.5 && rows[selected].mood === '好', '喝水睡眠心情保留');
+    await click('取消预览');
+    expect(JSON.stringify(await read())===JSON.stringify(before) && !await hasConfirm(),'取消预览不改记录');
     await click('读取最新步数');
-
-    await click('替换这一天的步数');
-    expect((await read())[selected].steps === 5432, '重复同步不累加');
-    await evaluate(page, `window.__werunTest.days = [{date: '${selected}', steps: 0}]`);
+    await click('确认替换 3 天的步数');
+    let rows=await read();
+    expect(rows[selected].steps===5432 && rows[dates[0]].steps===3210 && rows[historical]?.steps===0,'一次确认同步全部日期，包含补录窗口之外及零步');
+    expect(JSON.stringify(rows[dates[2]])===JSON.stringify(before[dates[2]]),'缺失日期完全不变');
+    expect(dates.slice(0,2).every(d=>rows[d].waterMl===750 && rows[d].sleepHours===7.5 && rows[d].mood==='好'),'原有喝水睡眠心情保留');
+    expect(await evaluate(page, `document.querySelector('section select').closest('section').innerText.includes('5432') && document.body.innerText.includes('已同步 3 天的步数')`),'所选日期卡片立即刷新并反馈同步天数');
+    await click('读取最新步数'); await click('确认替换 3 天的步数');
+    rows=await read();
+    expect(rows[selected].steps===5432 && rows[dates[0]].steps===3210,'重复批量同步不累加');
+    await evaluate(page, `window.__werunTest.days=[{date:'${selected}',steps:0}]`);
+    await click('读取最新步数'); await click('确认替换 1 天的步数');
+    expect((await read())[selected].steps===0,'真实零步替换已有非零值');
+    const stable=JSON.stringify(await read());
+    await evaluate(page, `window.__werunTest.days=[]`);
     await click('读取最新步数');
-
-    await click('替换这一天的步数');
-    expect((await read())[selected].steps === 0, '真实零步可替换');
-    const zeroRows = JSON.stringify(await read());
-    await evaluate(page, `window.__werunTest.days = []`);
+    expect(!await hasConfirm() && JSON.stringify(await read())===stable,'空快照不提供确认也不写入');
+    await evaluate(page, `window.__werunTest.days=[{date:'${selected}',steps:1234}]`);
     await click('读取最新步数');
-    expect(await evaluate(page, `document.body.innerText.includes('没有微信步数记录') && ![...document.querySelectorAll('button')].some(b=>b.textContent==='替换这一天的步数')`), '缺失日期不给替换入口');
-    expect(JSON.stringify(await read()) === zeroRows, '缺失日期不覆盖');
-    await evaluate(page, `window.__werunTest.days = [{date:'${selected}',steps:1234}]`);
-    await click('读取最新步数');
-    await evaluate(page, `(() => { const select=document.querySelector('section select'); select.value=window.__werunTest.dates[0]; select.dispatchEvent(new Event('change',{bubbles:true})); })()`);
+    await evaluate(page, `(() => { const s=document.querySelector('section select'); s.value=window.__werunTest.dates[0]; s.dispatchEvent(new Event('change',{bubbles:true})); })()`);
     await sleep(100);
-    expect(await evaluate(page, `![...document.querySelectorAll('button')].some(b=>b.textContent==='替换这一天的步数')`), '切换日期丢弃旧预览');
-    await evaluate(page, `[...document.querySelectorAll('summary')].find(e => e.textContent === '微信步数').click()`);
-    await evaluate(page, `window.__werunTest.status=401`);
+    expect(!await hasConfirm(),'切换日期丢弃未确认的批量预览');
+    await evaluate(page, `[...document.querySelectorAll('summary')].find(e=>e.textContent==='微信步数').click(); window.__werunTest.status=401;`);
     await click('读取最新步数');
-    expect(await evaluate(page, `document.body.innerText.includes('连接码已失效')`), '失效凭证给出重新连接提示');
-    await evaluate(page, `window.__werunTest.status=200; window.__werunTest.networkError=true`);
+    expect(await evaluate(page, `document.body.innerText.includes('连接码已失效')`),'失效凭证提示重新连接');
+    await evaluate(page, `window.__werunTest.status=200;window.__werunTest.networkError=true;`);
     await click('读取最新步数');
-    expect(JSON.stringify(await read()) === zeroRows, '断网不能改变记录');
-    await evaluate(page, `window.__werunTest.networkError=false; window.__werunTest.days=[{date:window.__werunTest.dates[0],steps:-1}]`);
+    expect(JSON.stringify(await read())===stable,'断网不改变数据');
+    await evaluate(page, `window.__werunTest.networkError=false;window.__werunTest.days=[{date:'${selected}',steps:-1}]`);
     await click('读取最新步数');
-    expect(await evaluate(page, `document.body.innerText.includes('步数数据格式不正确')`), '拒绝无效步数');
-    expect(await evaluate(page, `window.__werunTest.safe && window.__werunTest.requests >= 8`), '凭证仅在请求头传输且禁止缓存');
+    expect(!await hasConfirm() && JSON.stringify(await read())===stable,'无效数据整批拒绝');
+    // 31 天与最大合法步数也必须能在手机显示，不依赖当天日期或人工补录窗口。
+    await evaluate(page, `window.__werunTest.days=Array.from({length:31},(_,i)=>{
+      const d=new Date(window.__werunTest.dates[0]+'T12:00:00+08:00'); d.setUTCDate(d.getUTCDate()-i);
+      return {date:d.toISOString().slice(0,10),steps:i===0?100000:i};
+    })`);
+    await click('读取最新步数');
+    expect(await evaluate(page, `document.querySelector('[aria-label="微信步数批量预览"] tbody').rows.length===31 && document.documentElement.scrollWidth<=390`),'31 天手机预览无横向溢出');
+    await click('取消预览');
+    expect(JSON.stringify(await read())===stable,'取消 31 天预览不改变记录');
+    expect(await evaluate(page, `window.__werunTest.safe && window.__werunTest.requests>=8`),'凭证仅在请求头传输且禁止缓存');
+    // 三天一起达标也须逐日结算，重复同步不能重复庆祝或授徽章。
+    await evaluate(page, `(() => {
+      const t=window.__werunTest;
+      const rows=JSON.parse(localStorage.getItem('recipe.dailyCheckins.v1'));
+      for(const d of t.dates.slice(0,3)) rows[d].waterMl=3500;
+      localStorage.setItem('recipe.dailyCheckins.v1',JSON.stringify(rows));
+      localStorage.setItem('recipe.rewards.v1',JSON.stringify({days:{},badges:{},celebrated:[]}));
+      localStorage.setItem('recipe.healthProfile.v1',JSON.stringify({sex:'男',age:30,heightCm:172,weightKg:60,
+        activityLevel:'久坐少动',goal:'维持健康',allergies:'',conditions:'',updatedAt:1}));
+      window.dispatchEvent(new Event('yq:data-changed'));
+      t.days=t.dates.slice(0,3).map(date=>({date,steps:6500}));
+    })()`);
+    await sleep(150);
+    await click('读取最新步数'); await click('确认替换 3 天的步数');
+    const rewards=await evaluate(page, `JSON.parse(localStorage.getItem('recipe.rewards.v1'))`);
+    expect(dates.slice(0,3).every(d=>rewards.days[d]) && rewards.celebrated.length===3 && !!rewards.badges['streak-3'],'批量三天达标按日期结算并授予连续徽章');
+    await click('继续');
+    await click('读取最新步数'); await click('确认替换 3 天的步数');
+    expect(await evaluate(page, `JSON.stringify(JSON.parse(localStorage.getItem('recipe.rewards.v1')))`)===JSON.stringify(rewards),'重复同步不重复结算奖励');
+    expect(await evaluate(page, `![...document.querySelectorAll('h2')].some(e=>e.textContent==='今天两个目标都达成了')`),'重复同步不再次庆祝');
+    const afterRewards=JSON.stringify(await read());
     await click('移除本机连接');
-    expect(await evaluate(page, `!localStorage.getItem('recipe.werunConnection.v1')`), '移除本机凭证');
-    expect(JSON.stringify(await read()) === zeroRows, '移除连接保留记录');
-    expect(await evaluate(page, `document.documentElement.scrollWidth <= 390`), '手机视口无横向溢出');
-    const mark = failures.length === initialFailures ? '✓' : '✗';
-    console.log(mark + ' 微信步数：预览、选定日期替换、重复同步、零步、缺失日期、切换日期、失效/断网、字段保留与移除连接');
+    expect(await evaluate(page, `!localStorage.getItem('recipe.werunConnection.v1')`),'移除本机凭证');
+    expect(JSON.stringify(await read())===afterRewards,'移除连接保留全部记录');
+    console.log((failures.length===initialFailures?'✓':'✗')+' 微信步数：全日期预览与确认、取消、零步、重复不累加、缺失日期/其他字段保留、即时刷新、奖励去重、失效/断网及31天手机布局');
   } finally {
-    await evaluate(page, `window.fetch=window.__werunOriginalFetch; delete window.__werunTest; delete window.__werunOriginalFetch;`);
+    await evaluate(page, `window.fetch=window.__werunOriginalFetch;delete window.__werunTest;delete window.__werunOriginalFetch;`);
     await page.send('Emulation.clearDeviceMetricsOverride');
   }
 }
