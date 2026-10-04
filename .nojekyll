@@ -1,0 +1,2 @@
+# GitHub Pages 默认跑 Jekyll，而 Jekyll 会忽略下划线开头的目录 —— 也就是 `_next/`。
+# 缺了这个文件，页面能打开但所有 JS/CSS 都 404（白屏）。不要删。
