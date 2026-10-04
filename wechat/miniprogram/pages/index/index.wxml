@@ -1,0 +1,13 @@
+<view class="page">
+  <view class="title">把步数带回元气账本</view>
+  <view class="hint">授权后，仅同步微信提供的最近 31 天步数和对应日期。每次需要更新时，请进入这里点击同步。</view>
+  <button type="primary" bindtap="sync" loading="{{busy}}" disabled="{{busy}}">授权并同步微信步数</button>
+  <button bindtap="connect" disabled="{{busy || !synced}}">生成连接码</button>
+  <button wx:if="{{token}}" bindtap="copy" disabled="{{busy}}">复制连接码</button>
+  <view class="hint">首次连接：同步 → 生成并复制连接码 → 返回元气账本 → 展开「微信步数」→ 粘贴连接码。以后只需同步后回账本读取。</view>
+  <view class="status" role="status">{{message}}</view>
+  <view wx:for="{{days}}" wx:key="date" class="day"><text>{{item.date}}</text><text>{{item.steps}} 步</text></view>
+  <button size="mini" bindtap="settings">权限设置</button>
+  <button size="mini" bindtap="privacy">隐私保护指引</button>
+  <button bindtap="revoke" disabled="{{busy}}">撤销连接并删除云端步数</button>
+</view>

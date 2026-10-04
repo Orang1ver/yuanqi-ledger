@@ -4,6 +4,7 @@
   "private": true,
   "description": "元气账本 —— 记录吃、喝、动、睡的个人健康账本",
   "scripts": {
+    "test:werun": "node scripts/run-ts.mjs lib/werun.test.ts lib/storage/werun.test.ts lib/storage/backup.test.ts --test && node --test wechat/cloudfunctions/werun/core.test.cjs",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
@@ -12,7 +13,7 @@
     "check:nutrition": "node scripts/check-nutrition.mjs",
     "check:reference": "node scripts/check-food-reference.mjs",
     "check:chunks": "node scripts/check-page-chunks.mjs",
-    "test": "node scripts/run-ts.mjs lib/nutrition/core.test.ts lib/nutrition/analysis.test.ts lib/nutrition/menu.test.ts lib/nutrition/recommend.test.ts lib/nutrition/pickDish.test.ts lib/nutrition/tiers.test.ts lib/nutrition/verify.test.ts lib/nutrition/lookup.test.ts lib/nutrition/recipe.test.ts lib/ai/recommend.test.ts lib/ai/feedback.test.ts lib/ai/contribute.test.ts lib/storage/diet.test.ts lib/storage/customFoods.test.ts lib/storage/myRecipes.test.ts lib/storage/backupReminder.test.ts lib/storage/backup.test.ts lib/copy.test.ts lib/mealPresets.test.ts lib/exercise.test.ts lib/wellness.test.ts lib/weight.test.ts lib/update.test.ts lib/ota.test.ts --test",
+    "test": "node scripts/run-ts.mjs lib/nutrition/core.test.ts lib/nutrition/analysis.test.ts lib/nutrition/menu.test.ts lib/nutrition/recommend.test.ts lib/nutrition/pickDish.test.ts lib/nutrition/tiers.test.ts lib/nutrition/verify.test.ts lib/nutrition/lookup.test.ts lib/nutrition/recipe.test.ts lib/ai/recommend.test.ts lib/ai/feedback.test.ts lib/ai/contribute.test.ts lib/storage/diet.test.ts lib/storage/customFoods.test.ts lib/storage/myRecipes.test.ts lib/storage/backupReminder.test.ts lib/storage/backup.test.ts lib/storage/werun.test.ts lib/copy.test.ts lib/mealPresets.test.ts lib/exercise.test.ts lib/wellness.test.ts lib/weight.test.ts lib/update.test.ts lib/ota.test.ts --test",
     "probe": "node scripts/run-ts.mjs scripts/nutrition-probe.ts --",
     "preview": "node scripts/preview.mjs",
     "smoke": "node scripts/browser-smoke.mjs",

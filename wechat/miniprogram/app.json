@@ -1,0 +1,10 @@
+{
+  "pages": ["pages/index/index"],
+  "window": {
+    "navigationBarTitleText": "元气账本步数助手",
+    "navigationBarBackgroundColor": "#f7f8f4",
+    "navigationBarTextStyle": "black"
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json"
+}

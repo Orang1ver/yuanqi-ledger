@@ -38,9 +38,25 @@ export function exportBackup(includeApiKey: boolean): Backup {
   const data: Record<string, string> = {};
   if (typeof window !== "undefined") {
     for (const k of appKeys()) {
+      // 连接码是可撤销的读取凭证，换设备重新连接，不随健康记录分享。
+      if (k === KEYS.werunConnection) continue;
       if (!includeApiKey && k === KEYS.apikeys) continue;
       const v = localStorage.getItem(k);
-      if (v !== null) data[k] = v;
+      if (v === null) continue;
+      if (k === KEYS.importUndo) {
+        // 本机快照保留原值供撤销；导出副本不能夹带连接凭证。
+        // 快照按约定不含它自己；坏快照不导出，以免泄漏无法脱敏的残值。
+        try {
+          const snap = JSON.parse(v) as ImportUndo;
+          if (!snap || !snap.data || typeof snap.data !== "object" || Array.isArray(snap.data)) continue;
+          const snapshotData = { ...snap.data };
+          delete snapshotData[KEYS.werunConnection];
+          delete snapshotData[KEYS.importUndo];
+          data[k] = JSON.stringify({ ...snap, data: snapshotData });
+        } catch { /* 坏快照不可撤销，不纳入备份。 */ }
+      } else {
+        data[k] = v;
+      }
     }
   }
   return {

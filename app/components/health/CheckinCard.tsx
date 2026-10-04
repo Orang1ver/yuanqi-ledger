@@ -18,6 +18,7 @@ import { evaluateCheckin, hasCelebrated, settleCheckin, type Badge } from "@/lib
 import type { DailyCheckin, Mood } from "@/lib/types";
 import { ProgressRing } from "../shell/ProgressRing";
 import { RewardDialog } from "../shell/RewardDialog";
+import { WeRunSync } from "./WeRunSync";
 
 /**
  * 今日打卡卡：喝水 / 步数 / 睡眠 / 心情。
@@ -61,19 +62,26 @@ export function CheckinCard() {
   const waterProgress = progressOf(waterMl, waterTarget);
   const stepsProgress = progressOf(steps, stepsTarget);
 
-  /** 写入后重新结算：达标就记连续天数、发徽章、弹庆祝 */
-  function commit(next: DailyCheckin) {
+  /** 批量同步也按日期结算，奖励只保存一次，最后一次庆祝展示汇总结果。 */
+  function commit(next: DailyCheckin | null, updated: DailyCheckin[] = next ? [next] : []) {
     setCheckin(next);
-    // 同页的徽章墙要知道"今天达标了"
+    if (targets) {
+      let rewards = loadRewards();
+      let streak: number | null = null;
+      const badges: Badge[] = [];
+      for (const row of updated) {
+        if (!evaluateCheckin(row, targets).allDone || hasCelebrated(rewards, row.date)) continue;
+        const res = settleCheckin(rewards, row.date);
+        rewards = res.state;
+        streak = res.streak;
+        badges.push(...res.newBadges);
+      }
+      if (streak !== null) {
+        saveRewards(rewards);
+        setCelebrate({ streak, badges });
+      }
+    }
     emitDataChanged();
-    if (!targets) return;
-    const done = evaluateCheckin(next, targets);
-    if (!done.allDone) return;
-    const prev = loadRewards();
-    if (hasCelebrated(prev, next.date)) return;
-    const res = settleCheckin(prev, next.date);
-    saveRewards(res.state);
-    setCelebrate({ streak: res.streak, badges: res.newBadges });
   }
 
   function update(patch: Partial<Omit<DailyCheckin, "date">>) {
@@ -211,6 +219,8 @@ export function CheckinCard() {
           </div>
         </div>
       </div>
+
+      <WeRunSync key={date} onApply={(days) => commit(loadCheckin(date), days)} />
 
       <hr style={{ border: 0, borderTop: "1px solid var(--yq-line)", margin: "16px 0" }} />
 
