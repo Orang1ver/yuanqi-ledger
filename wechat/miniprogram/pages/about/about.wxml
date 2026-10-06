@@ -1,0 +1,50 @@
+<view class="page">
+  <view class="intro">
+    <image class="avatar" src="/assets/avatar.png" mode="aspectFit" aria-label="元气账本图标" />
+    <view class="name">{{info.name}}</view>
+    <view class="hint">{{info.description}}</view>
+  </view>
+  <view class="card">
+    <view class="section-title">第一次连接</view>
+    <view class="step"><text class="number">1</text><view>在小程序点击「授权并同步微信步数」。</view></view>
+    <view class="step"><text class="number">2</text><view>点击「生成连接码」，再点击「复制连接码」。</view></view>
+    <view class="step"><text class="number">3</text><view>打开元气账本，在今日打卡中展开「微信步数」，粘贴连接码并点击「连接并读取」。</view></view>
+    <view class="step"><text class="number">4</text><view>核对全部日期和步数预览，再点击「确认替换 N 天的步数」。确认后才会写入账本。</view></view>
+    <view class="hint">账本可在手机浏览器中打开；苹果手机可添加到主屏幕，安卓也可使用安装包。</view>
+    <button bindtap="copyLedgerUrl">复制账本网址</button>
+    <view class="url">{{info.ledgerUrl}}</view>
+  </view>
+  <view class="card">
+    <view class="section-title">以后怎样更新</view>
+    <view>先在这里点击「授权并同步微信步数」，再回到账本点击「读取最新步数」，预览后确认替换。</view>
+    <view class="hint">小程序不会持续在后台更新，账本读取的是最近一次同步的数据。</view>
+  </view>
+  <view class="card">
+    <view class="section-title">步数与连接码</view>
+    <view class="question">为什么没有某一天？</view>
+    <view class="hint">只能读取微信实际提供的日期，最多最近 31 天。缺少的日期不补成零步，也不会覆盖账本记录；微信返回的零步可以同步。</view>
+    <view class="question">重复同步会把步数加起来吗？</view>
+    <view class="hint">不会。确认后替换这些日期的步数，喝水、睡眠、心情及未返回的日期保持原值。</view>
+    <view class="question">什么时候需要重新生成连接码？</view>
+    <view class="hint">首次连接、连接码过期或需要更换时生成。有效期 90 天；生成新码后旧码立即失效，使用旧码的设备需要重新连接。</view>
+    <view class="question">换设备能直接看到原来的账本吗？</view>
+    <view class="hint">每台设备保存各自的本地账本，已保存的步数可以随账本备份迁移。连接码不进入备份，新设备需要重新粘贴连接码。首次从浏览器转到安卓安装包前，请先导出备份，安装后再导入。</view>
+    <view class="question">授权或同步失败怎么办？</view>
+    <view class="hint">先检查是否已启用微信运动，再回到首页的「权限设置」允许微信运动，网络恢复后重新同步。</view>
+  </view>
+  <view class="card">
+    <view class="section-title">联系与反馈</view>
+    <view>维护者：{{info.maintainer}}</view>
+    <view class="email">联系邮箱：{{info.contactEmail}}</view>
+    <button bindtap="copyContactEmail">复制联系邮箱</button>
+    <view class="hint">反馈问题时可说明手机型号、微信版本和操作步骤。请不要附带连接码或个人账本备份。</view>
+  </view>
+  <view class="card">
+    <view class="section-title">数据如何使用</view>
+    <view class="hint">授权后，日期、步数和同步时间会保存到云端，供持有连接码的设备读取。微信身份经过散列处理，用于区分用户；连接码只保存校验摘要和到期时间。</view>
+    <view class="hint">小程序不读取或上传账本中的饮食、喝水、体重、睡眠、心情或 AI Key。</view>
+    <view class="hint">云端步数保留到下次同步覆盖或主动删除，不会因为超过 31 天自动删除。</view>
+    <view class="hint">首页的「撤销连接并删除云端步数」会撤销所有设备的读取权限并删除云端数据，账本已保存的记录会保留。正式隐私保护指引以微信后台配置为准。</view>
+    <button bindtap="privacy">查看隐私保护指引</button>
+  </view>
+</view>

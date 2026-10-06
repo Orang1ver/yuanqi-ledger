@@ -1,5 +1,5 @@
 {
-  "description": "元气账本微信步数助手",
+  "description": "元气账本步数助手：微信运动步数授权、连接码与账本同步",
   "miniprogramRoot": "miniprogram/",
   "cloudfunctionRoot": "cloudfunctions/",
   "compileType": "miniprogram",

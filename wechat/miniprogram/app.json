@@ -1,5 +1,5 @@
 {
-  "pages": ["pages/index/index"],
+  "pages": ["pages/index/index", "pages/about/about"],
   "window": {
     "navigationBarTitleText": "元气账本步数助手",
     "navigationBarBackgroundColor": "#f7f8f4",

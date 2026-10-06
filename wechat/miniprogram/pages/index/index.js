@@ -1,4 +1,5 @@
 const { envId } = require("../../config");
+const info = require("../../info");
 const call = async (action, extra = {}) => {
   const response = await wx.cloud.callFunction({ name: "werun", data: { action, ...extra } });
   if (!response.result || !response.result.ok) throw new Error(response.result?.message || "服务暂不可用，请重试");
@@ -6,7 +7,7 @@ const call = async (action, extra = {}) => {
 };
 
 Page({
-  data: { busy: false, message: "", token: "", days: [], synced: false },
+  data: { info, busy: false, message: "", token: "", days: [], synced: false },
   async sync() {
     if (this.data.busy) return;
     if (!envId || !wx.cloud) { this.setData({ message: "步数服务尚未配置，请联系开发者" }); return; }
@@ -38,6 +39,8 @@ Page({
   copy() {
     if (this.data.token) wx.setClipboardData({ data: this.data.token });
   },
+  about() { wx.navigateTo({ url: "/pages/about/about" }); },
+  onShareAppMessage() { return { title: info.name, path: "/pages/index/index" }; },
   settings() { wx.openSetting(); },
   privacy() { wx.openPrivacyContract({ fail: () => this.setData({ message: "隐私指引暂不可用，请联系开发者" }) }); },
   async revoke() {
