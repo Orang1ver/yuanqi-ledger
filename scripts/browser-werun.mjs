@@ -63,6 +63,52 @@ export async function checkWeRun(page, baseUrl, failures, { goto, evaluate, slee
     expect(JSON.stringify(await read())===JSON.stringify(before),'读取只预览不写入');
     expect(await evaluate(page, `document.querySelector('[aria-label="微信步数批量预览"] tbody').rows.length===3`),'预览全部返回日期');
     expect(await evaluate(page, `document.body.innerText.includes('未记录') && document.body.innerText.includes('${historical}')`),'未记录的历史日期也进入预览');
+    // 只替换隔离测试页的剪贴板，检查实际点击传参；不碰用户系统剪贴板。
+    await evaluate(page, `(() => {
+      window.__werunClipboardDescriptor=Object.getOwnPropertyDescriptor(navigator,'clipboard');
+      Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async value=>{
+        if(window.__werunRejectCopy) throw new Error('denied');
+        window.__werunCopiedName=value;
+      }}});
+    })()`);
+    try {
+      await click('复制名称去微信搜索');
+      expect(await evaluate(page, `(() => {
+        const b=[...document.querySelectorAll('button')].find(b=>b.textContent==='复制名称去微信搜索');
+        return window.__werunCopiedName===b.parentElement.previousElementSibling.textContent
+          && !window.__werunCopiedName.includes('YQW1') && b.getBoundingClientRect().height>=44
+          && document.body.innerText.includes('已复制名称');
+      })()`),'入口复制助手名称且触控区域足够');
+      expect(await hasConfirm() && JSON.stringify(await read())===JSON.stringify(before),'点击助手入口保留预览与原始记录');
+      await evaluate(page,'window.__werunRejectCopy=true');
+      await click('复制名称去微信搜索');
+      expect(await evaluate(page,`document.body.innerText.includes('无法自动复制，请长按上方名称复制')`),'复制被拒绝时提供手动复制提示');
+      const hasLink=await evaluate(page,`!![...document.querySelectorAll('button')].find(b=>b.textContent==='打开步数助手')`);
+      if(hasLink) {
+        await evaluate(page,`window.__werunOriginalOpen=window.open; window.open=(...args)=>{window.__werunOpened=args;return null};`);
+        try {
+          await click('打开步数助手');
+          expect(await evaluate(page,`(() => {
+            const [value,target,features]=window.__werunOpened;
+            const url=new URL(value);
+            return ['wxaurl.cn','wxmpurl.cn'].includes(url.hostname) && url.protocol==='https:'
+              && !url.search && !url.hash && !value.includes('YQW1')
+              && target==='_blank' && features==='noopener,noreferrer';
+          })()`),'官方打开链接不带连接码且保留当前页面');
+          expect(await hasConfirm() && JSON.stringify(await read())===JSON.stringify(before),'跳转不清除预览或更改记录');
+        } finally {
+          await evaluate(page,'window.open=window.__werunOriginalOpen;delete window.__werunOriginalOpen;delete window.__werunOpened;');
+        }
+      } else {
+        expect(await evaluate(page,`document.body.innerText.includes('打开微信，搜索上方名称')`),'未配置链接时显示真实搜索指引');
+      }
+    } finally {
+      await evaluate(page,`(() => {
+        const descriptor=window.__werunClipboardDescriptor;
+        if(descriptor) Object.defineProperty(navigator,'clipboard',descriptor); else delete navigator.clipboard;
+        delete window.__werunClipboardDescriptor; delete window.__werunCopiedName; delete window.__werunRejectCopy;
+      })()`);
+    }
     if(screenshotPath) {
       await evaluate(page, `[...document.querySelectorAll('summary')].find(e=>e.textContent==='微信步数').closest('details').scrollIntoView({block:'center'})`);
       const shot=await page.send('Page.captureScreenshot',{format:'png'});
@@ -135,7 +181,7 @@ export async function checkWeRun(page, baseUrl, failures, { goto, evaluate, slee
     await click('移除本机连接');
     expect(await evaluate(page, `!localStorage.getItem('recipe.werunConnection.v1')`),'移除本机凭证');
     expect(JSON.stringify(await read())===afterRewards,'移除连接保留全部记录');
-    console.log((failures.length===initialFailures?'✓':'✗')+' 微信步数：全日期预览与确认、取消、零步、重复不累加、缺失日期/其他字段保留、即时刷新、奖励去重、失效/断网及31天手机布局');
+    console.log((failures.length===initialFailures?'✓':'✗')+' 微信步数：助手入口复制/失败提示与预览保留、全日期预览与确认、取消、零步、重复不累加、缺失日期/其他字段保留、即时刷新、奖励去重、失效/断网及31天手机布局');
   } finally {
     await evaluate(page, `window.fetch=window.__werunOriginalFetch;delete window.__werunTest;delete window.__werunOriginalFetch;`);
     await page.send('Emulation.clearDeviceMetricsOverride');

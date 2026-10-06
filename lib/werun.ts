@@ -4,6 +4,20 @@ export type WeRunSnapshot = { days: WeRunDay[]; syncedAt: number };
 
 export const WERUN_API_URL = process.env.NEXT_PUBLIC_WERUN_API_URL || "";
 export const WERUN_MINIPROGRAM_NAME = process.env.NEXT_PUBLIC_WERUN_MINIPROGRAM_NAME || "元气账本步数助手";
+/** 仅接受官方生成的公开链接，禁止把连接码或其它凭证拼进跳转地址。 */
+export function parseWeRunMiniProgramUrl(value: string): string {
+  try {
+    const url = new URL(value.trim());
+    if (url.protocol !== "https:" || !["wxaurl.cn", "wxmpurl.cn"].includes(url.hostname)
+      || url.username || url.password || url.port || url.search || url.hash
+      || !/^\/[A-Za-z0-9_-]+$/.test(url.pathname)) return "";
+    return url.href;
+  } catch {
+    return "";
+  }
+}
+
+export const WERUN_MINIPROGRAM_URL = parseWeRunMiniProgramUrl(process.env.NEXT_PUBLIC_WERUN_MINIPROGRAM_URL || "");
 export const WERUN_TOKEN_PATTERN = /^YQW1\.[a-f0-9]{64}\.[a-f0-9]{64}$/;
 
 export function parseWeRunSnapshot(value: unknown): WeRunSnapshot {

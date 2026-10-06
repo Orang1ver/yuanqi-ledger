@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { readWeRun, WERUN_API_URL, WERUN_MINIPROGRAM_NAME, type WeRunSnapshot } from "@/lib/werun";
+import { readWeRun, WERUN_API_URL, type WeRunSnapshot } from "@/lib/werun";
 import { applyWeRunSteps, forgetWeRunToken, loadWeRunToken, previewWeRunSteps, saveWeRunToken } from "@/lib/storage/werun";
+
+import { WeRunMiniProgramEntry } from "./WeRunMiniProgramEntry";
 
 import type { DailyCheckin } from "@/lib/types";
 
@@ -46,8 +48,9 @@ export function WeRunSync({ onApply }: { onApply: (days: DailyCheckin[]) => void
   return (
     <details style={{ marginTop: 12 }}>
       <summary style={{ cursor: "pointer", fontSize: 13 }}>微信步数</summary>
+      <WeRunMiniProgramEntry />
       <p className="yq-hint" style={{ marginTop: 8 }}>
-        在微信搜索「{WERUN_MINIPROGRAM_NAME}」并同步，再回这里读取。日期按北京时间显示。
+        在步数助手中同步后，再回这里读取。日期按北京时间显示。
       </p>
       {!token && <>
         <p className="yq-hint">首次使用：复制小程序的连接码并粘贴到下方。连接码可读取步数，请勿分享。</p>
